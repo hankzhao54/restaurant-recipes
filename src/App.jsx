@@ -811,13 +811,20 @@ export default function App(){
 
   // ── Render ────────────────────────────────────────────────────────────────
   const renderScreen=()=>{
-    if(authLoading)return <div style={{minHeight:"100vh",background:C.dark,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,color:C.gold,fontFamily:FONT,fontSize:14}}>
+    if(authLoading)return <div style={{minHeight:"100vh",background:C.dark,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,color:C.gold,fontFamily:FONT,fontSize:14}}>
       Loading…
-      <button onClick={async()=>{try{await signOut();}catch{};localStorage.clear();sessionStorage.clear();window.location.reload();}}
-        style={{marginTop:8,padding:"8px 16px",background:"transparent",border:`1px solid ${C.gold}`,
-          borderRadius:8,color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT}}>
-        Reset & restart
-      </button>
+      <div style={{display:"flex",gap:8,marginTop:8}}>
+        <button onClick={()=>window.location.reload()}
+          style={{padding:"7px 14px",background:"transparent",border:`1px solid ${C.gold}`,
+            borderRadius:8,color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT}}>
+          Reload
+        </button>
+        <button onClick={async()=>{try{await signOut();}catch{};localStorage.clear();sessionStorage.clear();window.location.reload();}}
+          style={{padding:"7px 14px",background:"transparent",border:`1px solid #888`,
+            borderRadius:8,color:"#888",fontSize:12,cursor:"pointer",fontFamily:FONT}}>
+          Reset & sign out
+        </button>
+      </div>
     </div>;
     if(!user)return <LoginScreen t={t} lang={lang} setLang={setLang} form={lf} setForm={setLf} doLogin={doLogin} err={lerr} loading={loggingIn}/>;
     if(view==="edit")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={selRecipe} onSave={handleSave} onCancel={()=>setView(selRecipe?"detail":"list")}/>;
