@@ -19,6 +19,7 @@ const T = {
     recipeName:"Recipe Name", recipeName_hu:"Hungarian Name (optional)",
     category:"Category", serves:"Serves", prepTime:"Prep (min)", cookTime:"Cook (min)",
     mins:"min", portions:"portions",
+    packSpec:"Pack Size", shelfLife:"Shelf Life", vacuumLevel:"Vacuum Level",
     ingredients:"Ingredients", ingredientName:"Ingredient name", ingredientQty:"Quantity",
     addIngredient:"+ Add Ingredient",
     steps:"Steps", stepDesc:"Describe this step…", addStep:"+ Add Step",
@@ -48,6 +49,7 @@ const T = {
     recipeName:"Recept neve (HU)", recipeName_hu:"",
     category:"Kategória", serves:"Adag", prepTime:"Előkészítés (perc)", cookTime:"Főzés (perc)",
     mins:"perc", portions:"adag",
+    packSpec:"Kiszerelés", shelfLife:"Eltarthatóság", vacuumLevel:"Vákuum szint",
     ingredients:"Hozzávalók", ingredientName:"Hozzávaló neve", ingredientQty:"Mennyiség",
     addIngredient:"+ Hozzávaló hozzáadása",
     steps:"Lépések", stepDesc:"Írja le a lépést…", addStep:"+ Lépés hozzáadása",
@@ -282,18 +284,44 @@ function RecipeCard({recipe,t,lang,onClick}){
       {alt&&<div style={{fontSize:10,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",
         whiteSpace:"nowrap",marginBottom:4}}>{alt}</div>}
       <div style={{display:"flex",gap:11,fontSize:11,color:C.muted}}>
-        <span>⏱ {(recipe.prepTime||0)+(recipe.cookTime||0)}{t.mins}</span>
-        <span>👥 {recipe.serves}</span>
+        {recipe.packSpec&&<span>📦 {recipe.packSpec}</span>}
+        {recipe.vacuumLevel&&<span>🔧 {recipe.vacuumLevel}</span>}
       </div>
     </div>
   </div>;
 }
 
 // ── DETAIL ────────────────────────────────────────────────────────────────────
+// Smart scale a quantity string. Returns the original if no number detected.
+// Recognises: "500 g", "1.5 kg", "1,5 l", "1/2 cup", "2db", "1 ek", "10ml"
+function scaleQty(qty, multiplier) {
+  if (!qty || multiplier === 1) return qty;
+  const trimmed = String(qty).trim();
+  // Match leading number (int / decimal / fraction), optional space, then the rest
+  // Accept both . and , as decimal separators
+  const m = trimmed.match(/^(\d+\s*\/\s*\d+|\d+[.,]\d+|\d+)(\s*.*)$/);
+  if (!m) return qty;
+  let n;
+  if (m[1].includes('/')) {
+    const [a,b] = m[1].split('/').map(s => parseFloat(s.replace(',','.')));
+    if (!b) return qty;
+    n = a / b;
+  } else {
+    n = parseFloat(m[1].replace(',', '.'));
+  }
+  if (!isFinite(n)) return qty;
+  const scaled = n * multiplier;
+  // Pretty-print: integers without decimals, otherwise up to 2 decimals
+  const pretty = Number.isInteger(scaled) ? String(scaled)
+    : scaled < 10 ? scaled.toFixed(2).replace(/\.?0+$/, '')
+    : scaled.toFixed(1).replace(/\.0$/, '');
+  return pretty + m[2];
+}
+
 function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,onDelete}){
   const [cdel,setCdel]=useState(false);
   const [trans,setTrans]=useState(null);       // translated ings + steps
-
+  const [multiplier,setMultiplier]=useState(1);
 
   if(!recipe&&!loading)return null;
   const col=recipe?(t.catColors[recipe.category]||C.gold):C.gold;
@@ -302,8 +330,12 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
   const name=recipe?getName(recipe,lang):"";
   const alt=recipe?getAltName(recipe,lang):"";
 
-  // Local bilingual — no API needed
-  const displayIngs=(recipe?.ingredients||[]).map(i=>({...i,name:lang==="en"?(i.enName||i.name):i.name}));
+  // Local bilingual + apply multiplier to quantities
+  const displayIngs=(recipe?.ingredients||[]).map(i=>({
+    ...i,
+    name:lang==="en"?(i.enName||i.name):i.name,
+    qty:scaleQty(i.qty, multiplier),
+  }));
   const displaySteps=(recipe?.steps||[]).map(s=>({...s,desc:lang==="en"?(s.enDesc||s.desc):s.desc}));
 
   return <div style={{minHeight:"100vh",background:C.bg,fontFamily:FONT,display:"flex",flexDirection:"column"}}>
@@ -349,12 +381,12 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
           </div>}
           {/* Stats */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:11,marginBottom:22}}>
-            {[{i:"🔪",l:t.prepTime,v:`${recipe.prepTime} ${t.mins}`},
-              {i:"🔥",l:t.cookTime,v:`${recipe.cookTime} ${t.mins}`},
-              {i:"👥",l:t.serves,v:`${recipe.serves} ${t.portions}`}
+            {[{i:"📦",l:t.packSpec,v:recipe.packSpec||"—"},
+              {i:"🕐",l:t.shelfLife,v:recipe.shelfLife||"—"},
+              {i:"🔧",l:t.vacuumLevel,v:recipe.vacuumLevel||"—"}
             ].map(s=><div key={s.l} style={{background:C.card,borderRadius:12,padding:"12px 8px",textAlign:"center",border:`1px solid ${C.border}`}}>
               <div style={{fontSize:20,marginBottom:3}}>{s.i}</div>
-              <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>{s.v}</div>
+              <div style={{fontSize:14,fontWeight:"bold",color:C.text,wordBreak:"break-word"}}>{s.v}</div>
               <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.l}</div>
             </div>)}
           </div>
@@ -362,8 +394,33 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
             borderRadius:9,padding:"9px 14px",marginBottom:24,color:"#a07030",fontSize:11}}>💰 {t.cost}</div>
           {/* Ingredients */}
           {displayIngs.length>0&&<>
-            <SHead title={t.ingredients} color={col}/>
-            
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13,flexWrap:"wrap",gap:8}}>
+              <SHead title={t.ingredients} color={col}/>
+              {/* Servings multiplier */}
+              <div style={{display:"flex",alignItems:"center",gap:8,background:C.card,
+                borderRadius:24,padding:"4px 6px 4px 14px",border:`1px solid ${C.border}`,
+                boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
+                <span style={{fontSize:11,color:C.muted}}>Scale</span>
+                <button onClick={()=>setMultiplier(m=>Math.max(0.25,+(m-0.5).toFixed(2)))}
+                  style={{width:26,height:26,borderRadius:"50%",border:`1px solid ${C.gold}`,
+                    background:"transparent",color:C.gold,fontSize:14,cursor:"pointer",fontFamily:FONT,
+                    display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>−</button>
+                <input type="number" min="0.25" max="100" step="0.5" value={multiplier}
+                  onChange={e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>0)setMultiplier(v);}}
+                  style={{width:46,padding:"4px 4px",border:`1px solid ${C.border}`,borderRadius:6,
+                    fontSize:13,fontFamily:FONT,color:C.text,textAlign:"center",outline:"none"}}/>
+                <span style={{fontSize:11,color:C.muted,fontWeight:"bold"}}>×</span>
+                <button onClick={()=>setMultiplier(m=>+(m+0.5).toFixed(2))}
+                  style={{width:26,height:26,borderRadius:"50%",border:`1px solid ${C.gold}`,
+                    background:C.gold,color:C.dark,fontSize:14,cursor:"pointer",fontFamily:FONT,fontWeight:"bold",
+                    display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>+</button>
+                {multiplier!==1&&<button onClick={()=>setMultiplier(1)}
+                  style={{padding:"4px 9px",background:"transparent",border:"none",
+                    color:C.muted,fontSize:11,cursor:"pointer",fontFamily:FONT,textDecoration:"underline"}}>
+                  reset
+                </button>}
+              </div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10,marginBottom:28}}>
               {displayIngs.map((ing,i)=>(
                 <div key={ing.id||i} style={{background:C.card,borderRadius:11,overflow:"hidden",border:`1px solid ${C.border}`,textAlign:"center"}}>
@@ -405,6 +462,7 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
 // ── ADD / EDIT ────────────────────────────────────────────────────────────────
 function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
   const blank={id:"",huName:"",enName:"",category:0,section:0,serves:10,prepTime:20,cookTime:60,
+    packSpec:"",shelfLife:"",vacuumLevel:"",
     coverImage:null,ingredients:[{id:uid(),name:"",qty:"",image:null}],
     steps:[{id:uid(),desc:"",image:null}]};
   const [form,setForm]=useState(()=>existing
@@ -469,8 +527,10 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
         </select>
       </Field>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:11}}>
-        {[[t.serves,"serves"],[t.prepTime,"prepTime"],[t.cookTime,"cookTime"]].map(([l,k])=>(
-          <Field key={k} label={l}><SI type="number" min="1" value={form[k]} onChange={e=>set(k,+e.target.value)}/></Field>
+        {[[t.packSpec,"packSpec","e.g. 2.5 kg / bag"],
+          [t.shelfLife,"shelfLife","e.g. 6 months frozen"],
+          [t.vacuumLevel,"vacuumLevel","e.g. P3"]].map(([l,k,ph])=>(
+          <Field key={k} label={l}><SI type="text" value={form[k]||""} placeholder={ph} onChange={e=>set(k,e.target.value)}/></Field>
         ))}
       </div>
       {/* Ingredients — bilingual side by side */}
@@ -708,6 +768,7 @@ export default function App(){
         const stub={id:saved.id,huName:saved.huName,enName:saved.enName,
           category:saved.category,section:saved.section,serves:saved.serves,
           prepTime:saved.prepTime,cookTime:saved.cookTime,
+          packSpec:saved.packSpec,shelfLife:saved.shelfLife,vacuumLevel:saved.vacuumLevel,
           author:saved.author,coverImage:saved.coverImage,createdAt:saved.createdAt};
         const pos=prev.findIndex(r=>r.id===stub.id);
         if(pos>=0){const copy=[...prev];copy[pos]=stub;return copy;}
@@ -1232,7 +1293,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
           {lang==="en"&&r.huName&&<span style={{fontSize:11,color:C.muted,
             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{r.huName}</span>}
           <span style={{fontSize:11,color:C.muted,flexShrink:0}}>
-            👥{r.serves} ⏱{(r.prepTime||0)+(r.cookTime||0)}min
+            {r.packSpec?`📦${r.packSpec} `:""}{r.vacuumLevel?`🔧${r.vacuumLevel}`:""}
           </span>
         </div>;
       })}

@@ -57,7 +57,7 @@ export async function getCurrentProfile() {
 export async function fetchAllRecipes() {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, author_name, cover_image, created_at')
+    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, author_name, cover_image, created_at')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(toClientRecipe);
@@ -100,6 +100,9 @@ function toClientRecipe(r) {
     serves: r.serves,
     prepTime: r.prep_time,
     cookTime: r.cook_time,
+    packSpec: r.pack_spec || '',
+    shelfLife: r.shelf_life || '',
+    vacuumLevel: r.vacuum_level || '',
     author: r.author_name || '',
     authorId: r.author_id,
     coverImage: r.cover_image,
@@ -118,6 +121,9 @@ function toDbRecipe(r) {
     serves: r.serves || 4,
     prep_time: r.prepTime || 15,
     cook_time: r.cookTime || 30,
+    pack_spec: r.packSpec || '',
+    shelf_life: r.shelfLife || '',
+    vacuum_level: r.vacuumLevel || '',
     author_id: r.authorId || null,
     author_name: r.author || '',
     cover_image: r.coverImage || null,
