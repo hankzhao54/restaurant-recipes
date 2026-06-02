@@ -14,7 +14,8 @@ const T = {
     appName:"101 Kitchen Recipes", tagline:"Restaurant Recipe Management",
     login:"Login", logout:"Log out", username:"Username", password:"Password",
     loginBtn:"Sign In", wrongCreds:"Incorrect username or password",
-    search:"Search recipes…", allCats:"All",
+    search:"Search recipes…", searchHint:"Search by name or ingredient…", allCats:"All",
+    favorites:"Favorites", noFaves:"No favorites yet — tap ☆ on any recipe",
     addRecipe:"New Recipe", newRecipe:"New Recipe", editRecipe:"Edit Recipe",
     recipeName:"Recipe Name", recipeName_hu:"Hungarian Name (optional)",
     category:"Category", serves:"Serves", prepTime:"Prep (min)", cookTime:"Cook (min)",
@@ -44,7 +45,8 @@ const T = {
     login:"Bejelentkezés", logout:"Kijelentkezés",
     username:"Felhasználónév", password:"Jelszó",
     loginBtn:"Belépés", wrongCreds:"Hibás felhasználónév vagy jelszó",
-    search:"Receptek keresése…", allCats:"Összes",
+    search:"Receptek keresése…", searchHint:"Keresés név vagy hozzávaló szerint…", allCats:"Összes",
+    favorites:"Kedvencek", noFaves:"Még nincs kedvenc — koppints a ☆ jelre",
     addRecipe:"Új Recept", newRecipe:"Új Recept", editRecipe:"Recept szerkesztése",
     recipeName:"Recept neve (HU)", recipeName_hu:"",
     category:"Kategória", serves:"Adag", prepTime:"Előkészítés (perc)", cookTime:"Főzés (perc)",
@@ -111,6 +113,18 @@ function TopBar({t,lang,setLang,user,onLogout,left}){
     </div>
   </div>;
 }
+
+// ── Personal favorites (stored locally per browser/device) ────────────────────
+const FAVES = {
+  key: "fav-recipes",
+  get(){ try{ return new Set(JSON.parse(localStorage.getItem(this.key)||"[]")); }catch{ return new Set(); } },
+  toggle(id){
+    const s=this.get();
+    if(s.has(id)) s.delete(id); else s.add(id);
+    try{ localStorage.setItem(this.key, JSON.stringify([...s])); }catch{}
+    return s;
+  },
+};
 
 function imgSrc(v){return v?(typeof v==="string"?v:v.preview):null;}
 function ImageUpload({value,onChange,size="md",t}){
@@ -210,7 +224,8 @@ function LoginScreen({t,lang,setLang,form,setForm,doLogin,err,loading}){
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────────
-function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activeCat,setActiveCat,onSelect,onAdd,canEdit,isAdmin,onAdmin}){
+function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activeCat,setActiveCat,onSelect,onAdd,canEdit,isAdmin,onAdmin,faves,toggleFave,favesOnly,setFavesOnly,totalCount}){
+  const faveCount=faves?faves.size:0;
   return <div style={{minHeight:"100vh",background:C.bg,fontFamily:FONT,display:"flex",flexDirection:"column"}}>
     <TopBar t={t} lang={lang} setLang={setLang} user={user} onLogout={onLogout}
       left={<span style={{color:C.goldL,fontWeight:"bold",fontSize:14,letterSpacing:1}}>🍽 {t.appName}</span>}/>
@@ -219,7 +234,7 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
       <div style={{display:"flex",gap:10,marginBottom:14}}>
         <div style={{flex:1,position:"relative"}}>
           <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:.4,fontSize:16}}>🔍</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.search}
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.searchHint}
             style={{...inputSt,paddingLeft:36,boxShadow:"0 2px 9px rgba(0,0,0,.07)"}}/>
         </div>
         {isAdmin&&<button onClick={onAdmin} style={{padding:"9px 14px",
@@ -232,9 +247,16 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
           fontSize:13,cursor:"pointer",fontFamily:FONT,whiteSpace:"nowrap",
           boxShadow:`0 2px 10px rgba(200,146,42,.32)`}}>+ {t.addRecipe}</button>}
       </div>
-      {/* Category chips */}
-      <div style={{display:"flex",gap:7,marginBottom:20,flexWrap:"wrap"}}>
-        <Chip label={`${t.allCats} (${recipes.length})`} active={activeCat===-1} color="#888" onClick={()=>setActiveCat(-1)}/>
+      {/* Category chips + favorites toggle */}
+      <div style={{display:"flex",gap:7,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={()=>setFavesOnly(f=>!f)} style={{padding:"5px 14px",borderRadius:20,cursor:"pointer",
+          fontFamily:FONT,fontSize:12,border:`1px solid ${favesOnly?"#e8b84b":"#d8a838"}`,
+          background:favesOnly?"#e8b84b":"transparent",color:favesOnly?C.dark:"#c8922a",
+          fontWeight:"bold",transition:"all .15s"}}>
+          ★ {t.favorites} ({faveCount})
+        </button>
+        <div style={{width:1,height:20,background:C.border,margin:"0 3px"}}/>
+        <Chip label={`${t.allCats} (${favesOnly?recipes.length:totalCount})`} active={activeCat===-1&&!favesOnly} color="#888" onClick={()=>{setActiveCat(-1);}}/>
         {t.catLabels.map((l,i)=>{
           const cnt=recipes.filter(r=>r.category===i).length;
           return cnt>0?<Chip key={i} label={`${l} (${cnt})`} active={activeCat===i} color={t.catColors[i]} onClick={()=>setActiveCat(i)}/>:null;
@@ -242,9 +264,11 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
       </div>
       {/* Grid */}
       {recipes.length===0
-        ?<div style={{textAlign:"center",padding:"70px 0",color:C.muted,fontSize:16}}>{t.noResults}</div>
+        ?<div style={{textAlign:"center",padding:"70px 0",color:C.muted,fontSize:16}}>
+          {favesOnly?t.noFaves:t.noResults}
+        </div>
         :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(205px,1fr))",gap:15}}>
-          {recipes.map(r=><RecipeCard key={r.id} recipe={r} t={t} lang={lang} onClick={()=>onSelect(r)}/>)}
+          {recipes.map(r=><RecipeCard key={r.id} recipe={r} t={t} lang={lang} onClick={()=>onSelect(r)} isFave={faves&&faves.has(r.id)} onToggleFave={()=>toggleFave(r.id)}/>)}
         </div>}
     </div>
   </div>;
@@ -258,7 +282,7 @@ function Chip({label,active,color,onClick}){
   </button>;
 }
 
-function RecipeCard({recipe,t,lang,onClick}){
+function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave}){
   const [hov,setHov]=useState(false);
   const col=t.catColors[recipe.category]||C.gold;
   const emo=EMOJIS[(recipe.id?.charCodeAt?.(recipe.id.length-1)||0)%EMOJIS.length];
@@ -271,12 +295,22 @@ function RecipeCard({recipe,t,lang,onClick}){
       transform:hov?"translateY(-3px)":"none"}}>
     <div style={{height:115,overflow:"hidden",position:"relative",background:`linear-gradient(135deg,${col}18,${col}38)`}}>
       {recipe.coverImage
-        ?<img src={recipe.coverImage} alt={name} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+        ?<img src={recipe.coverImage} alt={name} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
         :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:46}}>{emo}</div>}
       <span style={{position:"absolute",top:7,left:7,padding:"2px 9px",borderRadius:10,
         fontSize:10,background:`${col}dd`,color:"#fff",fontWeight:"bold"}}>
         {t.catLabels[recipe.category]}
       </span>
+      {/* Favorite star */}
+      <button onClick={e=>{e.stopPropagation();onToggleFave&&onToggleFave();}}
+        title="Favorite"
+        style={{position:"absolute",top:6,right:6,width:30,height:30,borderRadius:"50%",
+          border:"none",cursor:"pointer",fontSize:16,lineHeight:1,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          background:isFave?"rgba(232,184,75,.95)":"rgba(0,0,0,.35)",
+          color:isFave?"#1a1208":"#fff",transition:"all .15s",padding:0}}>
+        {isFave?"★":"☆"}
+      </button>
     </div>
     <div style={{padding:"11px 13px"}}>
       <div style={{fontSize:14,fontWeight:"bold",color:C.text,lineHeight:1.3,
@@ -631,6 +665,9 @@ export default function App(){
   const [detLoading,setDetLoading]=useState(false);
   const [search,setSearch]=useState("");
   const [activeCat,setActiveCat]=useState(-1);
+  const [faves,setFaves]=useState(()=>FAVES.get());
+  const [favesOnly,setFavesOnly]=useState(false);
+  const toggleFave=(id)=>{ setFaves(new Set(FAVES.toggle(id))); };
 
   // ── Toast notifications ──────────────────────────────────────────────────
   const [toast,setToast]=useState(null); // {msg, kind:'success'|'error'}
@@ -863,9 +900,26 @@ export default function App(){
 
   // ── Filtering ─────────────────────────────────────────────────────────────
   const filtered=stubs.filter(r=>{
-    const q=search.toLowerCase();
-    const match=(r.enName||"").toLowerCase().includes(q)||(r.huName||"").toLowerCase().includes(q);
-    return match&&(activeCat===-1||r.category===activeCat);
+    const q=search.toLowerCase().trim();
+    // Match against names AND ingredient names (both languages)
+    let match = !q;
+    if(q){
+      if((r.enName||"").toLowerCase().includes(q)||(r.huName||"").toLowerCase().includes(q)){
+        match=true;
+      } else if(Array.isArray(r.ingredients)){
+        match=r.ingredients.some(ing=>
+          (ing.name||"").toLowerCase().includes(q)||(ing.enName||"").toLowerCase().includes(q)
+        );
+      }
+    }
+    const catOk = activeCat===-1||r.category===activeCat;
+    const faveOk = !favesOnly || faves.has(r.id);
+    return match&&catOk&&faveOk;
+  });
+  // Sort: favorites first, then keep original order
+  filtered.sort((a,b)=>{
+    const fa=faves.has(a.id)?1:0, fb=faves.has(b.id)?1:0;
+    return fb-fa;
   });
 
   const canEdit=user?.role==="admin"||user?.role==="chef";
@@ -892,7 +946,7 @@ export default function App(){
     if(view==="detail")return <DetailScreen t={t} lang={lang} setLang={setLang} recipe={selRecipe} loading={detLoading} user={user} canEdit={canEdit} onBack={()=>setView("list")} onEdit={()=>setView("edit")} onDelete={()=>handleDelete(selId)}/>;
     if(view==="add")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={null} onSave={handleSave} onCancel={()=>setView("list")}/>;
     if(view==="admin")return <AdminPanel t={t} lang={lang} setLang={setLang} user={user} allStubs={stubs} onBack={()=>setView("list")} onBulkSave={handleBulkSave} onBulkImport={handleBulkImport} auditTick={auditTick} users={users} onAddUser={addUser} onDeleteUser={deleteUser} onChangePassword={changePassword}/>;
-    return <ListScreen t={t} lang={lang} setLang={setLang} user={user} onLogout={doLogout} recipes={filtered} search={search} setSearch={setSearch} activeCat={activeCat} setActiveCat={setActiveCat} onSelect={r=>openDetail(r.id)} onAdd={()=>setView("add")} canEdit={canEdit} isAdmin={user.role==="admin"} onAdmin={()=>setView("admin")}/>;
+    return <ListScreen t={t} lang={lang} setLang={setLang} user={user} onLogout={doLogout} recipes={filtered} search={search} setSearch={setSearch} activeCat={activeCat} setActiveCat={setActiveCat} onSelect={r=>openDetail(r.id)} onAdd={()=>setView("add")} canEdit={canEdit} isAdmin={user.role==="admin"} onAdmin={()=>setView("admin")} faves={faves} toggleFave={toggleFave} favesOnly={favesOnly} setFavesOnly={setFavesOnly} totalCount={stubs.length}/>;
   };
 
   return <>

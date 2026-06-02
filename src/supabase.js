@@ -57,7 +57,7 @@ export async function getCurrentProfile() {
 export async function fetchAllRecipes() {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, author_name, cover_image, created_at')
+    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, author_name, cover_image, created_at, ingredients')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(toClientRecipe);
