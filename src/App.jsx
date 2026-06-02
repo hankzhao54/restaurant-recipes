@@ -1355,7 +1355,7 @@ function ChangeLog({t,user,auditTick}){
 // ── Bulk Edit ─────────────────────────────────────────────────────────────────
 function BulkEdit({t,lang,allStubs,onBulkSave}){
   const [selected,setSelected]=useState(new Set());
-  const [fields,setFields]=useState({category:"",serves:"",prepTime:"",cookTime:""});
+  const [fields,setFields]=useState({category:"",packSpec:"",shelfLife:"",vacuumLevel:""});
   const [search,setSearch]=useState("");
   const [saving,setSaving]=useState(false);
   const [done,setDone]=useState(0);
@@ -1380,16 +1380,16 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
       if(!full)continue;
       const updated={...full};
       if(fields.category!=="")updated.category=+fields.category;
-      if(fields.serves!=="")updated.serves=+fields.serves;
-      if(fields.prepTime!=="")updated.prepTime=+fields.prepTime;
-      if(fields.cookTime!=="")updated.cookTime=+fields.cookTime;
+      if(fields.packSpec!=="")updated.packSpec=fields.packSpec;
+      if(fields.shelfLife!=="")updated.shelfLife=fields.shelfLife;
+      if(fields.vacuumLevel!=="")updated.vacuumLevel=fields.vacuumLevel;
       toSave.push(updated);
       setDone(n=>n+1);
     }
     await onBulkSave(toSave);
     setSaving(false);
     setSelected(new Set());
-    setFields({category:"",serves:"",prepTime:"",cookTime:""});
+    setFields({category:"",packSpec:"",shelfLife:"",vacuumLevel:""});
     setDone(0);
   };
 
@@ -1405,16 +1405,16 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
         <div>
-          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>Category</label>
+          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{t.category}</label>
           <select value={fields.category} onChange={e=>setFields(f=>({...f,category:e.target.value}))} style={inputSm}>
             <option value="">— no change —</option>
             {CAT_NAMES.map((c,i)=><option key={i} value={i}>{c}</option>)}
           </select>
         </div>
-        {[["Serves","serves"],["Prep (min)","prepTime"],["Cook (min)","cookTime"]].map(([l,k])=>(
+        {[[t.packSpec,"packSpec"],[t.shelfLife,"shelfLife"],[t.vacuumLevel,"vacuumLevel"]].map(([l,k])=>(
           <div key={k}>
             <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{l}</label>
-            <input type="number" min="1" placeholder="no change" value={fields[k]}
+            <input type="text" placeholder="no change" value={fields[k]}
               onChange={e=>setFields(f=>({...f,[k]:e.target.value}))} style={inputSm}/>
           </div>
         ))}
