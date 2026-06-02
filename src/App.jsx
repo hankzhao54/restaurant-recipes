@@ -25,6 +25,7 @@ const T = {
     addIngredient:"+ Add Ingredient",
     steps:"Steps", stepDesc:"Describe this step…", addStep:"+ Add Step",
     publish:"Save & Publish", saveDraft:"Save Draft", cancel:"Cancel", by:"By",
+    oneLanguageHint:"Tip: fill just one language if you like — the other will copy it automatically.",
     draftBadge:"DRAFT", history:"History", versionHistory:"Version History",
     noVersions:"No previous versions", restoreVersion:"Restore this version", restored:"✓ Version restored", current:"Current", editedBy:"edited by",
     categories:["Sauce / Marinade","Cold Dish","Stock / Soup","Staple / Noodle","Dessert / Bread","Fermented / Spice"],
@@ -58,6 +59,7 @@ const T = {
     addIngredient:"+ Hozzávaló hozzáadása",
     steps:"Lépések", stepDesc:"Írja le a lépést…", addStep:"+ Lépés hozzáadása",
     publish:"Mentés & Közzétesz", saveDraft:"Piszkozat mentése", cancel:"Mégsem", by:"Készítette",
+    oneLanguageHint:"Tipp: elég csak az egyik nyelvet kitölteni — a másik automatikusan átmásolódik.",
     draftBadge:"PISZKOZAT", history:"Előzmények", versionHistory:"Verzió előzmények",
     noVersions:"Nincs korábbi verzió", restoreVersion:"Verzió visszaállítása", restored:"✓ Verzió visszaállítva", current:"Jelenlegi", editedBy:"szerkesztette",
     categories:["Szósz / Marinád","Hideg étel","Alaplé / Leves","Tészta / Főétel","Desszert / Kenyér","Fermentált / Fűszer"],
@@ -612,6 +614,9 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
     };
     const recipe={...form,
       id:form.id||`u-${Date.now()}`,
+      // Fall back: if one language name is empty, copy the other over
+      huName: form.huName.trim() || form.enName.trim(),
+      enName: form.enName.trim() || form.huName.trim(),
       author:user.name,authorId:user.id,
       createdAt:form.createdAt||Date.now(),
       status: asDraft ? "draft" : "published",
@@ -631,13 +636,14 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
         <ImageUpload value={form.coverImage} onChange={v=>set("coverImage",v)} size="cover" t={t}/>
       </Field>
       {/* Name fields: primary (HU) + secondary (EN) */}
+      <div style={{fontSize:11,color:C.muted,marginBottom:7,fontStyle:"italic"}}>{t.oneLanguageHint}</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <Field label="Name (HU)">
           <SI value={form.huName} onChange={e=>{set("huName",e.target.value);setErr("");}} placeholder="Magyar név"/>
           {err&&<div style={{color:C.danger,fontSize:11,marginTop:4}}>{err}</div>}
         </Field>
         <Field label="Name (EN)">
-          <SI value={form.enName||""} onChange={e=>set("enName",e.target.value)} placeholder="English name"/>
+          <SI value={form.enName||""} onChange={e=>{set("enName",e.target.value);setErr("");}} placeholder="English name"/>
         </Field>
       </div>
       <Field label={t.category}>
