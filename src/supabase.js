@@ -57,7 +57,7 @@ export async function getCurrentProfile() {
 export async function fetchAllRecipes() {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, author_name, cover_image, created_at, ingredients')
+    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, status, author_id, author_name, cover_image, created_at, ingredients')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(toClientRecipe);
@@ -73,7 +73,23 @@ export async function fetchRecipeById(id) {
   return data ? toClientRecipe(data) : null;
 }
 
+// Save recipe. If a previous version exists, snapshot it into recipe_versions first.
 export async function upsertRecipe(recipe) {
+  // Snapshot the existing (pre-edit) version before overwriting
+  try {
+    const { data: existing } = await supabase
+      .from('recipes').select('*').eq('id', recipe.id).single();
+    if (existing) {
+      const profile = await getCurrentProfile();
+      await supabase.from('recipe_versions').insert({
+        recipe_id: recipe.id,
+        snapshot: existing,
+        edited_by: profile?.id || null,
+        edited_by_name: profile?.name || 'Unknown',
+      });
+    }
+  } catch { /* no existing version, or snapshot failed — continue with save */ }
+
   const row = toDbRecipe(recipe);
   const { data, error } = await supabase
     .from('recipes')
@@ -87,6 +103,24 @@ export async function upsertRecipe(recipe) {
 export async function deleteRecipe(id) {
   const { error } = await supabase.from('recipes').delete().eq('id', id);
   if (error) throw error;
+}
+
+// Fetch version history for a recipe (most recent first)
+export async function fetchRecipeVersions(recipeId) {
+  const { data, error } = await supabase
+    .from('recipe_versions')
+    .select('*')
+    .eq('recipe_id', recipeId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(v => ({
+    id: v.id,
+    recipeId: v.recipe_id,
+    snapshot: toClientRecipe(v.snapshot),
+    editedBy: v.edited_by,
+    editedByName: v.edited_by_name || 'Unknown',
+    ts: new Date(v.created_at).getTime(),
+  }));
 }
 
 // ── DB ↔ client field mapping ────────────────────────────────────────────────
@@ -103,6 +137,7 @@ function toClientRecipe(r) {
     packSpec: r.pack_spec || '',
     shelfLife: r.shelf_life || '',
     vacuumLevel: r.vacuum_level || '',
+    status: r.status || 'published',
     author: r.author_name || '',
     authorId: r.author_id,
     coverImage: r.cover_image,
@@ -124,6 +159,7 @@ function toDbRecipe(r) {
     pack_spec: r.packSpec || '',
     shelf_life: r.shelfLife || '',
     vacuum_level: r.vacuumLevel || '',
+    status: r.status || 'published',
     author_id: r.authorId || null,
     author_name: r.author || '',
     cover_image: r.coverImage || null,

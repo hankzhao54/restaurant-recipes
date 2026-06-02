@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   supabase,
   signIn, signOut, getCurrentProfile,
-  fetchAllRecipes, fetchRecipeById, upsertRecipe, deleteRecipe,
+  fetchAllRecipes, fetchRecipeById, upsertRecipe, deleteRecipe, fetchRecipeVersions,
   fetchAllUsers, adminCreateUser, adminChangePassword, adminDeleteUser,
   logAction, fetchAuditLog,
 } from "./supabase.js";
@@ -24,7 +24,9 @@ const T = {
     ingredients:"Ingredients", ingredientName:"Ingredient name", ingredientQty:"Quantity",
     addIngredient:"+ Add Ingredient",
     steps:"Steps", stepDesc:"Describe this step…", addStep:"+ Add Step",
-    publish:"Save & Publish", cancel:"Cancel", by:"By",
+    publish:"Save & Publish", saveDraft:"Save Draft", cancel:"Cancel", by:"By",
+    draftBadge:"DRAFT", history:"History", versionHistory:"Version History",
+    noVersions:"No previous versions", restoreVersion:"Restore this version", restored:"✓ Version restored", current:"Current", editedBy:"edited by",
     categories:["Sauce / Marinade","Cold Dish","Stock / Soup","Staple / Noodle","Dessert / Bread","Fermented / Spice"],
     catLabels:["Sauce","Cold","Soup","Staple","Dessert","Fermented"],
     catColors:["#c8922a","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4"],
@@ -55,7 +57,9 @@ const T = {
     ingredients:"Hozzávalók", ingredientName:"Hozzávaló neve", ingredientQty:"Mennyiség",
     addIngredient:"+ Hozzávaló hozzáadása",
     steps:"Lépések", stepDesc:"Írja le a lépést…", addStep:"+ Lépés hozzáadása",
-    publish:"Mentés & Közzétesz", cancel:"Mégsem", by:"Készítette",
+    publish:"Mentés & Közzétesz", saveDraft:"Piszkozat mentése", cancel:"Mégsem", by:"Készítette",
+    draftBadge:"PISZKOZAT", history:"Előzmények", versionHistory:"Verzió előzmények",
+    noVersions:"Nincs korábbi verzió", restoreVersion:"Verzió visszaállítása", restored:"✓ Verzió visszaállítva", current:"Jelenlegi", editedBy:"szerkesztette",
     categories:["Szósz / Marinád","Hideg étel","Alaplé / Leves","Tészta / Főétel","Desszert / Kenyér","Fermentált / Fűszer"],
     catLabels:["Szósz","Hideg","Leves","Tészta","Desszert","Fermentált"],
     catColors:["#c8922a","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4"],
@@ -311,6 +315,9 @@ function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave}){
           color:isFave?"#1a1208":"#fff",transition:"all .15s",padding:0}}>
         {isFave?"★":"☆"}
       </button>
+      {recipe.status==="draft"&&<span style={{position:"absolute",bottom:7,right:7,
+        padding:"2px 8px",borderRadius:7,fontSize:10,fontWeight:"bold",letterSpacing:1,
+        background:"rgba(192,129,61,.95)",color:"#fff"}}>{t.draftBadge}</span>}
     </div>
     <div style={{padding:"11px 13px"}}>
       <div style={{fontSize:14,fontWeight:"bold",color:C.text,lineHeight:1.3,
@@ -352,7 +359,7 @@ function scaleQty(qty, multiplier) {
   return pretty + m[2];
 }
 
-function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,onDelete}){
+function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,onDelete,onHistory}){
   const [cdel,setCdel]=useState(false);
   const [trans,setTrans]=useState(null);       // translated ings + steps
   const [multiplier,setMultiplier]=useState(1);
@@ -396,10 +403,16 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
             </span>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
               <div>
-                <h1 style={{margin:"0 0 3px",fontSize:26,color:C.text,lineHeight:1.2}}>{name}</h1>
+                <h1 style={{margin:"0 0 3px",fontSize:26,color:C.text,lineHeight:1.2}}>
+                  {name}
+                  {recipe.status==="draft"&&<span style={{fontSize:12,fontWeight:"bold",color:"#fff",
+                    background:"#c0813d",padding:"3px 9px",borderRadius:8,marginLeft:10,verticalAlign:"middle",
+                    letterSpacing:1}}>{t.draftBadge}</span>}
+                </h1>
                 {alt&&<div style={{fontSize:13,color:C.muted}}>{t.originalName} {alt}</div>}
               </div>
               {isOwner&&!cdel&&<div style={{display:"flex",gap:7,flexShrink:0,marginTop:4}}>
+                <button onClick={onHistory} title={t.history} style={{padding:"6px 12px",border:`1px solid ${C.muted}`,borderRadius:7,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:FONT}}>🕘</button>
                 <button onClick={onEdit} style={{padding:"6px 12px",border:`1px solid ${C.gold}`,borderRadius:7,background:"transparent",color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT}}>✎</button>
                 <button onClick={()=>setCdel(true)} style={{padding:"6px 12px",border:`1px solid ${C.danger}`,borderRadius:7,background:"transparent",color:C.danger,fontSize:12,cursor:"pointer",fontFamily:FONT}}>✕</button>
               </div>}
@@ -493,10 +506,81 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
   </div>;
 }
 
+// ── VERSION HISTORY ───────────────────────────────────────────────────────────
+function HistoryScreen({t,lang,setLang,user,recipe,versions,loading,onBack,onRestore}){
+  const [confirmId,setConfirmId]=useState(null);
+  const fmt=ts=>{const d=new Date(ts);return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});};
+  const nameOf=r=>lang==="en"?(r.enName||r.huName):(r.huName||r.enName);
+
+  return <div style={{minHeight:"100vh",background:C.bg,fontFamily:FONT,display:"flex",flexDirection:"column"}}>
+    <TopBar t={t} lang={lang} setLang={setLang} user={user} onLogout={()=>{}}
+      left={<button onClick={onBack} style={backSt}>{t.back}</button>}/>
+    <div style={{maxWidth:740,margin:"0 auto",padding:"24px 16px 64px",width:"100%",boxSizing:"border-box"}}>
+      <h2 style={{margin:"0 0 6px",fontSize:20,color:C.text}}>{t.versionHistory}</h2>
+      <div style={{color:C.muted,fontSize:13,marginBottom:20}}>{recipe?nameOf(recipe):""}</div>
+
+      {/* Current version */}
+      {recipe&&<div style={{background:C.card,borderRadius:12,padding:"14px 16px",marginBottom:14,
+        border:`2px solid ${C.gold}`}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <span style={{fontSize:11,fontWeight:"bold",color:C.dark,background:C.gold,
+              padding:"2px 9px",borderRadius:7,letterSpacing:1}}>{t.current}</span>
+            <span style={{fontSize:14,fontWeight:"bold",color:C.text,marginLeft:10}}>{nameOf(recipe)}</span>
+          </div>
+          <span style={{fontSize:12,color:C.muted}}>
+            {(recipe.ingredients||[]).length} ingredients · {(recipe.steps||[]).length} steps
+          </span>
+        </div>
+      </div>}
+
+      {loading
+        ?<div style={{textAlign:"center",padding:"40px 0",color:C.muted}}>⏳</div>
+        :versions.length===0
+          ?<div style={{textAlign:"center",padding:"50px 0",color:C.muted,fontSize:15}}>{t.noVersions}</div>
+          :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {versions.map(v=>(
+              <div key={v.id} style={{background:C.card,borderRadius:12,padding:"14px 16px",border:`1px solid ${C.border}`}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:160}}>
+                    <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>{nameOf(v.snapshot)}</div>
+                    <div style={{fontSize:11,color:C.muted,marginTop:3}}>
+                      {fmt(v.ts)} · {t.editedBy} {v.editedByName}
+                    </div>
+                    <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                      {(v.snapshot.ingredients||[]).length} ingredients · {(v.snapshot.steps||[]).length} steps
+                    </div>
+                  </div>
+                  {confirmId===v.id
+                    ?<div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>{onRestore(v.snapshot);setConfirmId(null);}}
+                        style={{padding:"6px 13px",background:C.gold,border:"none",borderRadius:7,
+                          color:C.dark,fontSize:12,fontWeight:"bold",cursor:"pointer",fontFamily:FONT}}>
+                        {t.yes}
+                      </button>
+                      <button onClick={()=>setConfirmId(null)}
+                        style={{padding:"6px 13px",background:"transparent",border:"1px solid #ccc",
+                          borderRadius:7,color:"#666",fontSize:12,cursor:"pointer",fontFamily:FONT}}>
+                        {t.no}
+                      </button>
+                    </div>
+                    :<button onClick={()=>setConfirmId(v.id)}
+                      style={{padding:"6px 13px",background:"transparent",border:`1px solid ${C.gold}`,
+                        borderRadius:7,color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT,flexShrink:0}}>
+                      {t.restoreVersion}
+                    </button>}
+                </div>
+              </div>
+            ))}
+          </div>}
+    </div>
+  </div>;
+}
+
 // ── ADD / EDIT ────────────────────────────────────────────────────────────────
 function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
   const blank={id:"",huName:"",enName:"",category:0,section:0,serves:10,prepTime:20,cookTime:60,
-    packSpec:"",shelfLife:"",vacuumLevel:"",
+    packSpec:"",shelfLife:"",vacuumLevel:"",status:"published",
     coverImage:null,ingredients:[{id:uid(),name:"",qty:"",image:null}],
     steps:[{id:uid(),desc:"",image:null}]};
   const [form,setForm]=useState(()=>existing
@@ -512,7 +596,7 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
   const db={padding:"8px 15px",background:"transparent",border:`1.5px dashed ${C.gold}`,borderRadius:8,color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT};
   const rb={background:"#fff0f0",border:"1px solid #fcc",borderRadius:7,color:"#c44",fontSize:13,padding:"3px 8px",cursor:"pointer",flexShrink:0};
 
-  const handleSave=async()=>{
+  const handleSave=async(asDraft)=>{
     if(!form.huName.trim()&&!form.enName.trim()){setErr(t.required);return;}
     setSaving(true);
     // Keep items if EITHER language is filled; fall back to the other language for the missing one
@@ -530,6 +614,7 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
       id:form.id||`u-${Date.now()}`,
       author:user.name,authorId:user.id,
       createdAt:form.createdAt||Date.now(),
+      status: asDraft ? "draft" : "published",
       ingredients:form.ingredients.map(fillIng).filter(Boolean),
       steps:form.steps.map(fillStep).filter(Boolean),
     };
@@ -632,11 +717,18 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
         ))}
         <button onClick={()=>set("steps",[...form.steps,{id:uid(),desc:"",enDesc:"",image:null}])} style={db}>{t.addStep}</button>
       </div>
-      <button onClick={handleSave} disabled={saving} style={{width:"100%",padding:"14px 0",
-        background:saving?"#ddd":`linear-gradient(135deg,${C.gold},${C.goldL})`,
-        border:"none",borderRadius:12,color:saving?"#999":C.dark,fontWeight:"bold",
-        fontSize:15,cursor:saving?"not-allowed":"pointer",letterSpacing:2,fontFamily:FONT,
-        boxShadow:saving?"none":`0 4px 20px rgba(200,146,42,.35)`}}>{saving?t.saving:t.publish}</button>
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={()=>handleSave(true)} disabled={saving} style={{flex:"0 0 auto",padding:"14px 22px",
+          background:"transparent",border:`1.5px solid ${C.gold}`,borderRadius:12,color:C.gold,fontWeight:"bold",
+          fontSize:14,cursor:saving?"not-allowed":"pointer",fontFamily:FONT,opacity:saving?0.5:1,whiteSpace:"nowrap"}}>
+          {t.saveDraft}
+        </button>
+        <button onClick={()=>handleSave(false)} disabled={saving} style={{flex:1,padding:"14px 0",
+          background:saving?"#ddd":`linear-gradient(135deg,${C.gold},${C.goldL})`,
+          border:"none",borderRadius:12,color:saving?"#999":C.dark,fontWeight:"bold",
+          fontSize:15,cursor:saving?"not-allowed":"pointer",letterSpacing:2,fontFamily:FONT,
+          boxShadow:saving?"none":`0 4px 20px rgba(200,146,42,.35)`}}>{saving?t.saving:t.publish}</button>
+      </div>
     </div>
   </div>;
 }
@@ -663,6 +755,8 @@ export default function App(){
   const [selId,setSelId]=useState(null);
   const [selRecipe,setSelRecipe]=useState(null);
   const [detLoading,setDetLoading]=useState(false);
+  const [versions,setVersions]=useState([]);
+  const [versionsLoading,setVersionsLoading]=useState(false);
   const [search,setSearch]=useState("");
   const [activeCat,setActiveCat]=useState(-1);
   const [faves,setFaves]=useState(()=>FAVES.get());
@@ -787,6 +881,30 @@ export default function App(){
       setSelRecipe(r);
     }catch(e){console.error(e);}
     setDetLoading(false);
+  };
+
+  const openHistory=async()=>{
+    if(!selRecipe)return;
+    setView("history");setVersionsLoading(true);
+    try{
+      const v=await fetchRecipeVersions(selRecipe.id);
+      setVersions(v);
+    }catch(e){console.error(e);setVersions([]);}
+    setVersionsLoading(false);
+  };
+
+  const restoreVersion=async(snapshot)=>{
+    try{
+      // Save the snapshot as the current version (this also snapshots the now-current one)
+      const restored={...snapshot,author:user.name,authorId:user.id};
+      const withUrls=await uploadPendingImages(restored);
+      const saved=await upsertRecipe(withUrls);
+      setSelRecipe(saved);
+      await logAction({action:"restore",recipeId:saved.id,recipeName:saved.enName||saved.huName,diff:{}});
+      setAuditTick(n=>n+1);
+      showToast(t.restored,"success");
+      setView("detail");
+    }catch(e){showToast("Restore failed: "+(e.message||e),"error");console.error(e);}
   };
 
   const handleSave=async(recipe)=>{
@@ -914,7 +1032,10 @@ export default function App(){
     }
     const catOk = activeCat===-1||r.category===activeCat;
     const faveOk = !favesOnly || faves.has(r.id);
-    return match&&catOk&&faveOk;
+    // Drafts only visible to their author or admins
+    const isDraft = r.status==="draft";
+    const draftOk = !isDraft || user?.role==="admin" || r.authorId===user?.id;
+    return match&&catOk&&faveOk&&draftOk;
   });
   // Sort: favorites first, then keep original order
   filtered.sort((a,b)=>{
@@ -943,7 +1064,8 @@ export default function App(){
     </div>;
     if(!user)return <LoginScreen t={t} lang={lang} setLang={setLang} form={lf} setForm={setLf} doLogin={doLogin} err={lerr} loading={loggingIn}/>;
     if(view==="edit")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={selRecipe} onSave={handleSave} onCancel={()=>setView(selRecipe?"detail":"list")}/>;
-    if(view==="detail")return <DetailScreen t={t} lang={lang} setLang={setLang} recipe={selRecipe} loading={detLoading} user={user} canEdit={canEdit} onBack={()=>setView("list")} onEdit={()=>setView("edit")} onDelete={()=>handleDelete(selId)}/>;
+    if(view==="detail")return <DetailScreen t={t} lang={lang} setLang={setLang} recipe={selRecipe} loading={detLoading} user={user} canEdit={canEdit} onBack={()=>setView("list")} onEdit={()=>setView("edit")} onDelete={()=>handleDelete(selId)} onHistory={openHistory}/>;
+    if(view==="history")return <HistoryScreen t={t} lang={lang} setLang={setLang} user={user} recipe={selRecipe} versions={versions} loading={versionsLoading} onBack={()=>setView("detail")} onRestore={restoreVersion}/>;
     if(view==="add")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={null} onSave={handleSave} onCancel={()=>setView("list")}/>;
     if(view==="admin")return <AdminPanel t={t} lang={lang} setLang={setLang} user={user} allStubs={stubs} onBack={()=>setView("list")} onBulkSave={handleBulkSave} onBulkImport={handleBulkImport} auditTick={auditTick} users={users} onAddUser={addUser} onDeleteUser={deleteUser} onChangePassword={changePassword}/>;
     return <ListScreen t={t} lang={lang} setLang={setLang} user={user} onLogout={doLogout} recipes={filtered} search={search} setSearch={setSearch} activeCat={activeCat} setActiveCat={setActiveCat} onSelect={r=>openDetail(r.id)} onAdd={()=>setView("add")} canEdit={canEdit} isAdmin={user.role==="admin"} onAdmin={()=>setView("admin")} faves={faves} toggleFave={toggleFave} favesOnly={favesOnly} setFavesOnly={setFavesOnly} totalCount={stubs.length}/>;
@@ -1165,7 +1287,7 @@ function ChangeLog({t,user,auditTick}){
     fetchAuditLog(300).then(setLog).catch(()=>{});
   },[auditTick]);
 
-  const ACTION_COLOR={create:"#5a9e6f",edit:"#4a90c4","bulk-edit":"#8b5e9e",import:"#c8922a",delete:"#c04040"};
+  const ACTION_COLOR={create:"#5a9e6f",edit:"#4a90c4","bulk-edit":"#8b5e9e",import:"#c8922a",delete:"#c04040",restore:"#3d9b9b","user-add":"#5a9e6f","user-del":"#c04040","pwd-change":"#4a90c4"};
   const filtered = filter==="all" ? log : log.filter(e=>e.action===filter);
 
   const fmt = ts => {
@@ -1178,7 +1300,7 @@ function ChangeLog({t,user,auditTick}){
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
       <h2 style={{margin:0,fontSize:18,color:C.text}}>Change History ({filtered.length})</h2>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {["all","create","edit","bulk-edit","import","delete"].map(a=>(
+        {["all","create","edit","bulk-edit","import","delete","restore"].map(a=>(
           <button key={a} onClick={()=>setFilter(a)} style={{
             padding:"4px 12px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:FONT,
             border:`1px solid ${ACTION_COLOR[a]||"#888"}`,
