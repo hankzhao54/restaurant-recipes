@@ -26,6 +26,10 @@ export function compressImage(file, maxDim = 1200, quality = 0.78) {
 export async function uploadImage(file, prefix = 'recipes') {
   if (!file) return null;
   const blob = file instanceof Blob && file.type.startsWith('image/') ? await compressImage(file) : file;
+  if (!(blob instanceof Blob)) {
+    console.error('uploadImage: not a Blob', blob);
+    throw new Error('Invalid image data');
+  }
 
   const ext = 'jpg';
   const path = `${prefix}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -39,8 +43,12 @@ export async function uploadImage(file, prefix = 'recipes') {
   return data.publicUrl;
 }
 
-// If src is a File / Blob, upload it. If it's a string URL, return as is.
-// If it's null, return null.
+// Resolve an image value to a public URL string.
+// Accepts:
+//   - null/undefined   → null
+//   - string           → returned as-is (already a URL)
+//   - File/Blob        → upload, return URL
+//   - {file, preview}  → upload file, return URL (this is what ImageUpload produces)
 export async function resolveImage(src, prefix) {
   if (!src) return null;
   if (typeof src === 'string') return src;

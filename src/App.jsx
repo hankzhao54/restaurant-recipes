@@ -1,12 +1,19 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, createContext, useContext } from "react";
+import QRCode from "qrcode";
 import {
   supabase,
   signIn, signOut, getCurrentProfile,
   fetchAllRecipes, fetchRecipeById, upsertRecipe, deleteRecipe, fetchRecipeVersions,
   fetchAllUsers, adminCreateUser, adminChangePassword, adminDeleteUser,
   logAction, fetchAuditLog,
+  fetchCategories, upsertCategory, deleteCategory, nextCategoryId,
 } from "./supabase.js";
 import { resolveImage } from "./utils/image.js";
+
+// ── Category context (DB-backed, editable) ────────────────────────────────────
+const CatCtx = createContext([]);
+function catLabel(cats, id, lang){ const c=(cats||[]).find(x=>x.id===id); return c?(lang==="en"?c.nameEn:c.nameHu):"—"; }
+function catColor(cats, id){ const c=(cats||[]).find(x=>x.id===id); return c?c.color:"#c8922a"; }
 
 // ── i18n — EN (primary) + HU only ────────────────────────────────────────────
 const T = {
@@ -26,6 +33,11 @@ const T = {
     steps:"Steps", stepDesc:"Describe this step…", addStep:"+ Add Step",
     publish:"Save & Publish", saveDraft:"Save Draft", cancel:"Cancel", by:"By",
     oneLanguageHint:"Tip: fill just one language if you like — the other will copy it automatically.",
+    recentlyViewed:"Recently viewed", sortBy:"Sort", sortDefault:"Newest", sortName:"Name", sortRecent:"Recent",
+    prepList:"Prep List", addToPrep:"Add to prep list", prepListHint:"Select recipes and quantities — ingredients are totalled below.", prepEmpty:"No recipes added. Tap 🧾 on any recipe card.", totalIngredients:"Total ingredients", copyList:"Copy list", clearAll:"Clear all",
+    duplicate:"Duplicate", usedIn:"Used in", stats:"Statistics", exportData:"Export", allergens:"Allergens",
+    qrHint:"Scan to open this recipe", print:"Print", manageCats:"Categories", addCategory:"Add category",
+    allergenLabels:{gluten:"Gluten",crustacean:"Crustaceans",egg:"Egg",fish:"Fish",peanut:"Peanut",soy:"Soy",milk:"Milk",nut:"Tree nuts",celery:"Celery",mustard:"Mustard",sesame:"Sesame",sulphite:"Sulphites",lupin:"Lupin",mollusc:"Molluscs"},
     draftBadge:"DRAFT", history:"History", versionHistory:"Version History",
     noVersions:"No previous versions", restoreVersion:"Restore this version", restored:"✓ Version restored", current:"Current", editedBy:"edited by",
     categories:["Sauce / Marinade","Cold Dish","Stock / Soup","Staple / Noodle","Dessert / Bread","Fermented / Spice"],
@@ -60,6 +72,11 @@ const T = {
     steps:"Lépések", stepDesc:"Írja le a lépést…", addStep:"+ Lépés hozzáadása",
     publish:"Mentés & Közzétesz", saveDraft:"Piszkozat mentése", cancel:"Mégsem", by:"Készítette",
     oneLanguageHint:"Tipp: elég csak az egyik nyelvet kitölteni — a másik automatikusan átmásolódik.",
+    recentlyViewed:"Nemrég megtekintett", sortBy:"Rendezés", sortDefault:"Legújabb", sortName:"Név", sortRecent:"Legutóbbi",
+    prepList:"Előkészítő lista", addToPrep:"Hozzáadás", prepListHint:"Válassz recepteket és mennyiséget — a hozzávalók lent összesítve.", prepEmpty:"Nincs recept. Koppints a 🧾 ikonra.", totalIngredients:"Összes hozzávaló", copyList:"Lista másolása", clearAll:"Összes törlése",
+    duplicate:"Másolat", usedIn:"Felhasználva", stats:"Statisztika", exportData:"Exportálás", allergens:"Allergének",
+    qrHint:"Szkenneld be a recept megnyitásához", print:"Nyomtatás", manageCats:"Kategóriák", addCategory:"Kategória hozzáadása",
+    allergenLabels:{gluten:"Glutén",crustacean:"Rákfélék",egg:"Tojás",fish:"Hal",peanut:"Földimogyoró",soy:"Szója",milk:"Tej",nut:"Diófélék",celery:"Zeller",mustard:"Mustár",sesame:"Szezám",sulphite:"Szulfitok",lupin:"Csillagfürt",mollusc:"Puhatestűek"},
     draftBadge:"PISZKOZAT", history:"Előzmények", versionHistory:"Verzió előzmények",
     noVersions:"Nincs korábbi verzió", restoreVersion:"Verzió visszaállítása", restored:"✓ Verzió visszaállítva", current:"Jelenlegi", editedBy:"szerkesztette",
     categories:["Szósz / Marinád","Hideg étel","Alaplé / Leves","Tészta / Főétel","Desszert / Kenyér","Fermentált / Fűszer"],
@@ -81,6 +98,7 @@ const T = {
 
 
 const EMOJIS=["🥘","🥗","🍜","🍚","🍮","🧆","🍗","🫕","🍱","🍲","🥩","🫙","🌶","🧄","🥟"];
+const ALLERGEN_KEYS=["gluten","crustacean","egg","fish","peanut","soy","milk","nut","celery","mustard","sesame","sulphite","lupin","mollusc"];
 const C={bg:"#fdf8f0",card:"#fff",dark:"#1a1208",gold:"#c8922a",goldL:"#e8b84b",goldD:"#8b5e1a",text:"#2a1a05",muted:"#a08060",border:"#e8dcc8",danger:"#c04040"};
 const FONT="'Georgia','Noto Serif SC',serif";
 const uid=()=>Math.random().toString(36).slice(2,9);
@@ -129,6 +147,19 @@ const FAVES = {
     if(s.has(id)) s.delete(id); else s.add(id);
     try{ localStorage.setItem(this.key, JSON.stringify([...s])); }catch{}
     return s;
+  },
+};
+
+// ── Recently viewed (stored locally per device) ──────────────────────────────
+const RECENT = {
+  key: "recent-recipes",
+  get(){ try{ return JSON.parse(localStorage.getItem(this.key)||"[]"); }catch{ return []; } },
+  push(id){
+    let arr=this.get().filter(x=>x!==id);
+    arr.unshift(id);
+    arr=arr.slice(0,8);
+    try{ localStorage.setItem(this.key, JSON.stringify(arr)); }catch{}
+    return arr;
   },
 };
 
@@ -230,8 +261,13 @@ function LoginScreen({t,lang,setLang,form,setForm,doLogin,err,loading}){
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────────
-function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activeCat,setActiveCat,onSelect,onAdd,canEdit,isAdmin,onAdmin,faves,toggleFave,favesOnly,setFavesOnly,totalCount}){
+function ListScreen({t,lang,setLang,user,onLogout,recipes,allStubs,search,setSearch,activeCat,setActiveCat,onSelect,onAdd,canEdit,isAdmin,onAdmin,faves,toggleFave,favesOnly,setFavesOnly,totalCount,sortBy,setSortBy,recentIds,prepList,setPrepList,onOpenPrep}){
+  const cats=useContext(CatCtx);
   const faveCount=faves?faves.size:0;
+  const inPrep=id=>prepList.some(p=>p.id===id);
+  const togglePrep=id=>setPrepList(prev=>inPrep(id)?prev.filter(p=>p.id!==id):[...prev,{id,mult:1}]);
+  // Recently viewed (resolve ids → stubs, keep order)
+  const recentRecipes=(recentIds||[]).map(id=>allStubs.find(r=>r.id===id)).filter(Boolean).slice(0,6);
   return <div style={{minHeight:"100vh",background:C.bg,fontFamily:FONT,display:"flex",flexDirection:"column"}}>
     <TopBar t={t} lang={lang} setLang={setLang} user={user} onLogout={onLogout}
       left={<span style={{color:C.goldL,fontWeight:"bold",fontSize:14,letterSpacing:1}}>🍽 {t.appName}</span>}/>
@@ -243,6 +279,9 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.searchHint}
             style={{...inputSt,paddingLeft:36,boxShadow:"0 2px 9px rgba(0,0,0,.07)"}}/>
         </div>
+        {prepList.length>0&&<button onClick={onOpenPrep} style={{padding:"9px 14px",
+          background:"#3d7a52",border:"none",borderRadius:10,color:"#fff",fontWeight:"bold",
+          fontSize:13,cursor:"pointer",fontFamily:FONT,whiteSpace:"nowrap"}}>🧾 {t.prepList} ({prepList.length})</button>}
         {isAdmin&&<button onClick={onAdmin} style={{padding:"9px 14px",
           background:"transparent",border:`1px solid ${C.gold}`,
           borderRadius:10,color:C.gold,fontWeight:"bold",
@@ -252,6 +291,30 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
           border:"none",borderRadius:10,color:C.dark,fontWeight:"bold",
           fontSize:13,cursor:"pointer",fontFamily:FONT,whiteSpace:"nowrap",
           boxShadow:`0 2px 10px rgba(200,146,42,.32)`}}>+ {t.addRecipe}</button>}
+      </div>
+      {/* Recently viewed */}
+      {recentRecipes.length>0&&!search&&!favesOnly&&activeCat===-1&&<div style={{marginBottom:18}}>
+        <div style={{fontSize:11,color:C.muted,letterSpacing:1,marginBottom:8,textTransform:"uppercase"}}>🕘 {t.recentlyViewed}</div>
+        <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+          {recentRecipes.map(r=>(
+            <button key={r.id} onClick={()=>onSelect(r)} style={{flexShrink:0,padding:"7px 13px",
+              background:C.card,border:`1px solid ${C.border}`,borderRadius:20,fontSize:12,
+              color:C.text,cursor:"pointer",fontFamily:FONT,whiteSpace:"nowrap",maxWidth:170,
+              overflow:"hidden",textOverflow:"ellipsis"}}>
+              {lang==="en"?(r.enName||r.huName):(r.huName||r.enName)}
+            </button>
+          ))}
+        </div>
+      </div>}
+      {/* Sort row */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <span style={{fontSize:11,color:C.muted}}>{t.sortBy}:</span>
+        {[["default",t.sortDefault],["name",t.sortName],["recent",t.sortRecent]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSortBy(k)} style={{padding:"4px 11px",borderRadius:14,
+            border:`1px solid ${sortBy===k?C.gold:C.border}`,background:sortBy===k?C.gold:"transparent",
+            color:sortBy===k?C.dark:C.muted,fontSize:11,cursor:"pointer",fontFamily:FONT,
+            fontWeight:sortBy===k?"bold":"normal"}}>{l}</button>
+        ))}
       </div>
       {/* Category chips + favorites toggle */}
       <div style={{display:"flex",gap:7,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
@@ -263,9 +326,9 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
         </button>
         <div style={{width:1,height:20,background:C.border,margin:"0 3px"}}/>
         <Chip label={`${t.allCats} (${favesOnly?recipes.length:totalCount})`} active={activeCat===-1&&!favesOnly} color="#888" onClick={()=>{setActiveCat(-1);}}/>
-        {t.catLabels.map((l,i)=>{
-          const cnt=recipes.filter(r=>r.category===i).length;
-          return cnt>0?<Chip key={i} label={`${l} (${cnt})`} active={activeCat===i} color={t.catColors[i]} onClick={()=>setActiveCat(i)}/>:null;
+        {cats.map(c=>{
+          const cnt=recipes.filter(r=>r.category===c.id).length;
+          return cnt>0?<Chip key={c.id} label={`${lang==="en"?c.nameEn:c.nameHu} (${cnt})`} active={activeCat===c.id} color={c.color} onClick={()=>setActiveCat(c.id)}/>:null;
         })}
       </div>
       {/* Grid */}
@@ -274,7 +337,7 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,search,setSearch,activ
           {favesOnly?t.noFaves:t.noResults}
         </div>
         :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(205px,1fr))",gap:15}}>
-          {recipes.map(r=><RecipeCard key={r.id} recipe={r} t={t} lang={lang} onClick={()=>onSelect(r)} isFave={faves&&faves.has(r.id)} onToggleFave={()=>toggleFave(r.id)}/>)}
+          {recipes.map(r=><RecipeCard key={r.id} recipe={r} t={t} lang={lang} onClick={()=>onSelect(r)} isFave={faves&&faves.has(r.id)} onToggleFave={()=>toggleFave(r.id)} inPrep={inPrep(r.id)} onTogglePrep={()=>togglePrep(r.id)}/>)}
         </div>}
     </div>
   </div>;
@@ -288,9 +351,10 @@ function Chip({label,active,color,onClick}){
   </button>;
 }
 
-function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave}){
+function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave,inPrep,onTogglePrep}){
+  const cats=useContext(CatCtx);
   const [hov,setHov]=useState(false);
-  const col=t.catColors[recipe.category]||C.gold;
+  const col=catColor(cats,recipe.category);
   const emo=EMOJIS[(recipe.id?.charCodeAt?.(recipe.id.length-1)||0)%EMOJIS.length];
   const name=getName(recipe,lang);
   const alt=getAltName(recipe,lang);
@@ -305,7 +369,7 @@ function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave}){
         :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:46}}>{emo}</div>}
       <span style={{position:"absolute",top:7,left:7,padding:"2px 9px",borderRadius:10,
         fontSize:10,background:`${col}dd`,color:"#fff",fontWeight:"bold"}}>
-        {t.catLabels[recipe.category]}
+        {catLabel(cats,recipe.category,lang)}
       </span>
       {/* Favorite star */}
       <button onClick={e=>{e.stopPropagation();onToggleFave&&onToggleFave();}}
@@ -316,6 +380,16 @@ function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave}){
           background:isFave?"rgba(232,184,75,.95)":"rgba(0,0,0,.35)",
           color:isFave?"#1a1208":"#fff",transition:"all .15s",padding:0}}>
         {isFave?"★":"☆"}
+      </button>
+      {/* Add to prep list */}
+      <button onClick={e=>{e.stopPropagation();onTogglePrep&&onTogglePrep();}}
+        title={t.addToPrep}
+        style={{position:"absolute",top:6,right:42,width:30,height:30,borderRadius:"50%",
+          border:"none",cursor:"pointer",fontSize:15,lineHeight:1,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          background:inPrep?"rgba(61,122,82,.95)":"rgba(0,0,0,.35)",
+          color:"#fff",transition:"all .15s",padding:0}}>
+        {inPrep?"✓":"🧾"}
       </button>
       {recipe.status==="draft"&&<span style={{position:"absolute",bottom:7,right:7,
         padding:"2px 8px",borderRadius:7,fontSize:10,fontWeight:"bold",letterSpacing:1,
@@ -361,13 +435,15 @@ function scaleQty(qty, multiplier) {
   return pretty + m[2];
 }
 
-function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,onDelete,onHistory}){
+function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,onDelete,onHistory,onDuplicate,onZoom,allStubs,onSearchIngredient}){
+  const cats=useContext(CatCtx);
   const [cdel,setCdel]=useState(false);
   const [trans,setTrans]=useState(null);       // translated ings + steps
   const [multiplier,setMultiplier]=useState(1);
+  const [showQR,setShowQR]=useState(false);
 
   if(!recipe&&!loading)return null;
-  const col=recipe?(t.catColors[recipe.category]||C.gold):C.gold;
+  const col=recipe?catColor(cats,recipe.category):C.gold;
   const emo=recipe?EMOJIS[(recipe.id?.charCodeAt?.(recipe.id.length-1)||0)%EMOJIS.length]:"🍲";
   const isOwner=canEdit&&(user?.id===recipe?.authorId||user?.role==="admin");
   const name=recipe?getName(recipe,lang):"";
@@ -400,7 +476,7 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
           <div style={{marginBottom:18}}>
             <span style={{display:"inline-block",padding:"3px 12px",borderRadius:12,fontSize:11,
               background:`${col}22`,color:col,border:`1px solid ${col}44`,marginBottom:8}}>
-              {t.catLabels[recipe.category]}
+              {catLabel(cats,recipe.category,lang)}
               {recipe.section&&t.sections[recipe.section]?" · "+t.sections[recipe.section]:""}
             </span>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
@@ -413,14 +489,28 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
                 </h1>
                 {alt&&<div style={{fontSize:13,color:C.muted}}>{t.originalName} {alt}</div>}
               </div>
-              {isOwner&&!cdel&&<div style={{display:"flex",gap:7,flexShrink:0,marginTop:4}}>
-                <button onClick={onHistory} title={t.history} style={{padding:"6px 12px",border:`1px solid ${C.muted}`,borderRadius:7,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:FONT}}>🕘</button>
-                <button onClick={onEdit} style={{padding:"6px 12px",border:`1px solid ${C.gold}`,borderRadius:7,background:"transparent",color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT}}>✎</button>
-                <button onClick={()=>setCdel(true)} style={{padding:"6px 12px",border:`1px solid ${C.danger}`,borderRadius:7,background:"transparent",color:C.danger,fontSize:12,cursor:"pointer",fontFamily:FONT}}>✕</button>
-              </div>}
+              <div style={{display:"flex",gap:7,flexShrink:0,marginTop:4}}>
+                <button onClick={()=>setShowQR(true)} title="QR" style={{padding:"6px 12px",border:`1px solid ${C.muted}`,borderRadius:7,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:FONT}}>⊞</button>
+                {isOwner&&!cdel&&<>
+                  <button onClick={onHistory} title={t.history} style={{padding:"6px 12px",border:`1px solid ${C.muted}`,borderRadius:7,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:FONT}}>🕘</button>
+                  <button onClick={onDuplicate} title={t.duplicate} style={{padding:"6px 12px",border:`1px solid ${C.muted}`,borderRadius:7,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:FONT}}>⧉</button>
+                  <button onClick={onEdit} style={{padding:"6px 12px",border:`1px solid ${C.gold}`,borderRadius:7,background:"transparent",color:C.gold,fontSize:12,cursor:"pointer",fontFamily:FONT}}>✎</button>
+                  <button onClick={()=>setCdel(true)} style={{padding:"6px 12px",border:`1px solid ${C.danger}`,borderRadius:7,background:"transparent",color:C.danger,fontSize:12,cursor:"pointer",fontFamily:FONT}}>✕</button>
+                </>}
+              </div>
             </div>
             <div style={{color:C.muted,fontSize:12,marginTop:4}}>{t.by}: {recipe.author}</div>
+            {/* Allergen badges */}
+            {recipe.allergens&&recipe.allergens.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>
+              {recipe.allergens.map(a=>(
+                <span key={a} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:"bold",
+                  background:"#fdeaea",color:"#c04040",border:"1px solid #f0c0c0"}}>
+                  ⚠ {(t.allergenLabels&&t.allergenLabels[a])||a}
+                </span>
+              ))}
+            </div>}
           </div>
+          {showQR&&<QRModal recipe={recipe} name={name} t={t} onClose={()=>setShowQR(false)}/>}
           {cdel&&<div style={{background:"#fff5f5",border:"1px solid #fcc",borderRadius:11,padding:"14px 16px",marginBottom:18}}>
             <div style={{color:C.danger,fontSize:13,marginBottom:10}}>{t.confirmDelete}</div>
             <div style={{display:"flex",gap:8}}>
@@ -474,10 +564,12 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
               {displayIngs.map((ing,i)=>(
                 <div key={ing.id||i} style={{background:C.card,borderRadius:11,overflow:"hidden",border:`1px solid ${C.border}`,textAlign:"center"}}>
                   {ing.image
-                    ?<img src={ing.image} alt={ing.name} style={{width:"100%",height:85,objectFit:"cover",display:"block"}}/>
+                    ?<img src={ing.image} alt={ing.name} onClick={()=>onZoom&&onZoom(ing.image)} style={{width:"100%",height:85,objectFit:"cover",display:"block",cursor:"zoom-in"}}/>
                     :<div style={{height:62,background:`${col}10`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🥄</div>}
                   <div style={{padding:"7px 8px"}}>
-                    <div style={{fontSize:12,fontWeight:"bold",color:C.text,lineHeight:1.3}}>{ing.name}</div>
+                    <div onClick={()=>onSearchIngredient&&onSearchIngredient(ing.name)}
+                      title={t.usedIn}
+                      style={{fontSize:12,fontWeight:"bold",color:C.text,lineHeight:1.3,cursor:"pointer",textDecoration:"underline dotted",textUnderlineOffset:2}}>{ing.name}</div>
                     <div style={{fontSize:11,color:C.muted,marginTop:2}}>{ing.qty}</div>
                   </div>
                 </div>
@@ -498,8 +590,8 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
                   <div style={{background:C.card,borderRadius:10,padding:"11px 14px",
                     border:`1px solid ${C.border}`,color:C.text,fontSize:14,lineHeight:1.68,
                     whiteSpace:"pre-wrap",marginBottom:step.image?8:0}}>{step.desc}</div>
-                  {step.image&&<img src={step.image} alt={`step ${i+1}`}
-                    style={{width:"100%",borderRadius:10,display:"block",maxHeight:220,objectFit:"cover",border:`1px solid ${C.border}`}}/>}
+                  {step.image&&<img src={step.image} alt={`step ${i+1}`} onClick={()=>onZoom&&onZoom(step.image)}
+                    style={{width:"100%",borderRadius:10,display:"block",maxHeight:220,objectFit:"cover",border:`1px solid ${C.border}`,cursor:"zoom-in"}}/>}
                 </div>
               </div>
             ))}
@@ -507,6 +599,123 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
         </div>}
   </div>;
 }
+
+// ── PREP LIST (今日备料清单) ────────────────────────────────────────────────
+function PrepListScreen({t,lang,setLang,user,prepList,setPrepList,allStubs,onBack,onSelect}){
+  const [loaded,setLoaded]=useState({}); // id -> full recipe
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    let cancel=false;
+    (async()=>{
+      setLoading(true);
+      const out={};
+      for(const p of prepList){
+        try{ const r=await fetchRecipeById(p.id); if(r)out[p.id]=r; }catch{}
+      }
+      if(!cancel){setLoaded(out);setLoading(false);}
+    })();
+    return()=>{cancel=true;};
+  },[prepList.map(p=>p.id).join(",")]);
+
+  const nameFor=r=>lang==="en"?(r.enName||r.huName):(r.huName||r.enName);
+  const setMult=(id,m)=>setPrepList(prev=>prev.map(p=>p.id===id?{...p,mult:Math.max(0.25,m)}:p));
+  const remove=id=>setPrepList(prev=>prev.filter(p=>p.id!==id));
+
+  // Aggregate ingredients across all selected recipes (×mult), merging same name+unit
+  const agg={};
+  for(const p of prepList){
+    const r=loaded[p.id]; if(!r)continue;
+    for(const ing of (r.ingredients||[])){
+      const nm=lang==="en"?(ing.enName||ing.name):(ing.name||ing.enName);
+      const scaled=scaleQty(ing.qty,p.mult);
+      // Parse number+unit for merge
+      const m=String(scaled||"").trim().match(/^(\d+[.,]?\d*)\s*(.*)$/);
+      const key=nm.toLowerCase().trim();
+      if(m){
+        const num=parseFloat(m[1].replace(",",".")); const unit=(m[2]||"").trim();
+        const mk=`${key}|${unit.toLowerCase()}`;
+        if(!agg[mk])agg[mk]={name:nm,unit,num:0,nonNum:[]};
+        agg[mk].num+=isFinite(num)?num:0;
+      } else {
+        const mk=`${key}|_`;
+        if(!agg[mk])agg[mk]={name:nm,unit:"",num:null,nonNum:[]};
+        agg[mk].nonNum.push(scaled);
+      }
+    }
+  }
+  const aggList=Object.values(agg).map(a=>{
+    if(a.num!==null){
+      const pretty=Number.isInteger(a.num)?String(a.num):a.num.toFixed(2).replace(/\.?0+$/,"");
+      return {name:a.name, qty:`${pretty}${a.unit?" "+a.unit:""}`};
+    }
+    return {name:a.name, qty:a.nonNum.join(", ")};
+  }).sort((x,y)=>x.name.localeCompare(y.name));
+
+  return <div style={{minHeight:"100vh",background:C.bg,fontFamily:FONT,display:"flex",flexDirection:"column"}}>
+    <TopBar t={t} lang={lang} setLang={setLang} user={user} onLogout={()=>{}}
+      left={<button onClick={onBack} style={backSt}>{t.back}</button>}/>
+    <div style={{maxWidth:820,margin:"0 auto",padding:"24px 16px 64px",width:"100%",boxSizing:"border-box"}}>
+      <h2 style={{margin:"0 0 4px",fontSize:20,color:C.text}}>🧾 {t.prepList}</h2>
+      <div style={{color:C.muted,fontSize:13,marginBottom:20}}>{t.prepListHint}</div>
+
+      {prepList.length===0
+        ?<div style={{textAlign:"center",padding:"50px 0",color:C.muted}}>{t.prepEmpty}</div>
+        :<>
+          {/* Selected recipes with multipliers */}
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+            {prepList.map(p=>{
+              const r=loaded[p.id];
+              return <div key={p.id} style={{background:C.card,borderRadius:11,padding:"11px 14px",
+                border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <span onClick={()=>r&&onSelect(r)} style={{flex:1,minWidth:140,fontSize:14,fontWeight:"bold",
+                  color:C.text,cursor:r?"pointer":"default"}}>
+                  {r?nameFor(r):"…"}
+                </span>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button onClick={()=>setMult(p.id,+(p.mult-0.5).toFixed(2))} style={multBtn}>−</button>
+                  <span style={{minWidth:42,textAlign:"center",fontSize:13,fontWeight:"bold",color:C.gold}}>{p.mult}×</span>
+                  <button onClick={()=>setMult(p.id,+(p.mult+0.5).toFixed(2))} style={multBtn}>+</button>
+                </div>
+                <button onClick={()=>remove(p.id)} style={{padding:"4px 9px",background:"transparent",
+                  border:"none",color:C.danger,fontSize:16,cursor:"pointer"}}>✕</button>
+              </div>;
+            })}
+          </div>
+
+          {/* Aggregated shopping list */}
+          <div style={{fontSize:13,fontWeight:"bold",color:C.text,marginBottom:11,letterSpacing:1}}>
+            📋 {t.totalIngredients} ({aggList.length})
+          </div>
+          {loading
+            ?<div style={{textAlign:"center",padding:"30px 0",color:C.muted}}>⏳</div>
+            :<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+              {aggList.map((a,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"10px 16px",
+                  borderBottom:i<aggList.length-1?`1px solid ${C.border}`:"none",fontSize:14}}>
+                  <span style={{color:C.text}}>{a.name}</span>
+                  <span style={{color:C.gold,fontWeight:"bold"}}>{a.qty}</span>
+                </div>
+              ))}
+            </div>}
+          <div style={{display:"flex",gap:10,marginTop:18}}>
+            <button onClick={()=>{
+              const txt=aggList.map(a=>`${a.name}: ${a.qty}`).join("\n");
+              navigator.clipboard?.writeText(txt);
+            }} style={{padding:"9px 18px",background:C.gold,border:"none",borderRadius:9,
+              color:C.dark,fontWeight:"bold",fontSize:13,cursor:"pointer",fontFamily:FONT}}>
+              📋 {t.copyList}
+            </button>
+            <button onClick={()=>setPrepList([])} style={{padding:"9px 16px",background:"transparent",
+              border:"1px solid #ccc",borderRadius:9,color:"#888",fontSize:13,cursor:"pointer",fontFamily:FONT}}>
+              {t.clearAll}
+            </button>
+          </div>
+        </>}
+    </div>
+  </div>;
+}
+const multBtn={width:26,height:26,borderRadius:"50%",border:`1px solid ${C.gold}`,background:"transparent",color:C.gold,fontSize:14,cursor:"pointer",fontFamily:FONT,display:"flex",alignItems:"center",justifyContent:"center",padding:0};
 
 // ── VERSION HISTORY ───────────────────────────────────────────────────────────
 function HistoryScreen({t,lang,setLang,user,recipe,versions,loading,onBack,onRestore}){
@@ -581,8 +790,9 @@ function HistoryScreen({t,lang,setLang,user,recipe,versions,loading,onBack,onRes
 
 // ── ADD / EDIT ────────────────────────────────────────────────────────────────
 function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
-  const blank={id:"",huName:"",enName:"",category:0,section:0,serves:10,prepTime:20,cookTime:60,
-    packSpec:"",shelfLife:"",vacuumLevel:"",status:"published",
+  const cats=useContext(CatCtx);
+  const blank={id:"",huName:"",enName:"",category:(cats[0]?.id??0),section:0,serves:10,prepTime:20,cookTime:60,
+    packSpec:"",shelfLife:"",vacuumLevel:"",status:"published",allergens:[],
     coverImage:null,ingredients:[{id:uid(),name:"",qty:"",image:null}],
     steps:[{id:uid(),desc:"",image:null}]};
   const [form,setForm]=useState(()=>existing
@@ -648,8 +858,25 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
       </div>
       <Field label={t.category}>
         <select value={form.category} onChange={e=>set("category",+e.target.value)} style={inputSt}>
-          {t.categories.map((c,i)=><option key={i} value={i}>{c}</option>)}
+          {cats.map(c=><option key={c.id} value={c.id}>{lang==="en"?c.nameEn:c.nameHu}</option>)}
         </select>
+      </Field>
+      {/* Allergens */}
+      <Field label={t.allergens}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+          {ALLERGEN_KEYS.map(a=>{
+            const on=(form.allergens||[]).includes(a);
+            return <button key={a} type="button" onClick={()=>{
+              const cur=form.allergens||[];
+              set("allergens", on?cur.filter(x=>x!==a):[...cur,a]);
+            }} style={{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:FONT,
+              border:`1px solid ${on?"#c04040":C.border}`,
+              background:on?"#fdeaea":"transparent",color:on?"#c04040":C.muted,
+              fontWeight:on?"bold":"normal"}}>
+              {on?"⚠ ":""}{(t.allergenLabels&&t.allergenLabels[a])||a}
+            </button>;
+          })}
+        </div>
       </Field>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:11}}>
         {[[t.packSpec,"packSpec","e.g. 2.5 kg / bag"],
@@ -768,6 +995,13 @@ export default function App(){
   const [faves,setFaves]=useState(()=>FAVES.get());
   const [favesOnly,setFavesOnly]=useState(false);
   const toggleFave=(id)=>{ setFaves(new Set(FAVES.toggle(id))); };
+  const [sortBy,setSortBy]=useState("default"); // default | name | recent
+  const [recentIds,setRecentIds]=useState(()=>RECENT.get());
+  // Cross-tab tools
+  const [prepList,setPrepList]=useState([]); // [{id, mult}]
+  const [zoomImg,setZoomImg]=useState(null);
+  const [dupSource,setDupSource]=useState(null);
+  const [cats,setCats]=useState([]); // DB-backed categories
 
   // ── Toast notifications ──────────────────────────────────────────────────
   const [toast,setToast]=useState(null); // {msg, kind:'success'|'error'}
@@ -838,10 +1072,15 @@ export default function App(){
       try{
         const recipes=await fetchAllRecipes();
         setStubs(recipes);
+        try{ const cs=await fetchCategories(); setCats(cs); }catch(e){console.error("cats load",e);}
         if(user.role==="admin"){
           const u=await fetchAllUsers();
           setUsers(u);
         }
+        // If opened via QR code link (#recipe/xxx), jump straight to that recipe
+        const hash=window.location.hash||"";
+        const m=hash.match(/recipe\/([^/]+)/);
+        if(m&&m[1]){ openDetail(decodeURIComponent(m[1])); }
       }catch(e){console.error("Load error:",e);}
     })();
   },[user]);
@@ -882,6 +1121,8 @@ export default function App(){
   // ── Recipe handlers ───────────────────────────────────────────────────────
   const openDetail=async(id)=>{
     setDetLoading(true);setView("detail");setSelId(id);
+    setRecentIds(RECENT.push(id));
+    try{ window.location.hash = `recipe/${id}`; }catch{}
     try{
       const r=await fetchRecipeById(id);
       setSelRecipe(r);
@@ -913,8 +1154,38 @@ export default function App(){
     }catch(e){showToast("Restore failed: "+(e.message||e),"error");console.error(e);}
   };
 
+  // Duplicate: open the Add form pre-filled from an existing recipe (new id, "(copy)" name)
+  const handleDuplicate=()=>{
+    if(!selRecipe)return;
+    const copy={
+      ...selRecipe,
+      id:"", // new recipe
+      huName:selRecipe.huName?`${selRecipe.huName} (másolat)`:"",
+      enName:selRecipe.enName?`${selRecipe.enName} (copy)`:"",
+      status:"draft",
+      createdAt:Date.now(),
+      ingredients:(selRecipe.ingredients||[]).map(i=>({...i,id:uid()})),
+      steps:(selRecipe.steps||[]).map(s=>({...s,id:uid()})),
+    };
+    setDupSource(copy);
+    setView("add");
+  };
+
+  // Save all categories (admin) — upserts each, deletes removed ones
+  const saveCats=async(nextCats,removedIds)=>{
+    try{
+      for(const c of nextCats){ await upsertCategory(c); }
+      for(const id of (removedIds||[])){ await deleteCategory(id); }
+      const fresh=await fetchCategories();
+      setCats(fresh);
+      showToast("✓ Categories saved","success");
+    }catch(e){showToast("Save failed: "+(e.message||e),"error");console.error(e);}
+  };
+
   const handleSave=async(recipe)=>{
     try{
+      // Clear duplicate source once we save
+      setDupSource(null);
       // Upload any pending image files first
       const withUrls=await uploadPendingImages({
         ...recipe,
@@ -1044,6 +1315,17 @@ export default function App(){
     return match&&catOk&&faveOk&&draftOk;
   });
   // Sort: favorites first, then keep original order
+  // Apply chosen sort, then always float favorites to the top
+  const nameFor=r=>(lang==="en"?(r.enName||r.huName):(r.huName||r.enName))||"";
+  filtered.sort((a,b)=>{
+    if(sortBy==="name") return nameFor(a).localeCompare(nameFor(b));
+    if(sortBy==="recent"){
+      const ia=recentIds.indexOf(a.id), ib=recentIds.indexOf(b.id);
+      const ra=ia===-1?9999:ia, rb=ib===-1?9999:ib;
+      if(ra!==rb) return ra-rb;
+    }
+    return (b.createdAt||0)-(a.createdAt||0);
+  });
   filtered.sort((a,b)=>{
     const fa=faves.has(a.id)?1:0, fb=faves.has(b.id)?1:0;
     return fb-fa;
@@ -1070,17 +1352,27 @@ export default function App(){
     </div>;
     if(!user)return <LoginScreen t={t} lang={lang} setLang={setLang} form={lf} setForm={setLf} doLogin={doLogin} err={lerr} loading={loggingIn}/>;
     if(view==="edit")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={selRecipe} onSave={handleSave} onCancel={()=>setView(selRecipe?"detail":"list")}/>;
-    if(view==="detail")return <DetailScreen t={t} lang={lang} setLang={setLang} recipe={selRecipe} loading={detLoading} user={user} canEdit={canEdit} onBack={()=>setView("list")} onEdit={()=>setView("edit")} onDelete={()=>handleDelete(selId)} onHistory={openHistory}/>;
+    if(view==="detail")return <DetailScreen t={t} lang={lang} setLang={setLang} recipe={selRecipe} loading={detLoading} user={user} canEdit={canEdit} onBack={()=>setView("list")} onEdit={()=>setView("edit")} onDelete={()=>handleDelete(selId)} onHistory={openHistory} onDuplicate={handleDuplicate} onZoom={setZoomImg} allStubs={stubs} onSearchIngredient={(term)=>{setSearch(term);setView("list");}}/>;
     if(view==="history")return <HistoryScreen t={t} lang={lang} setLang={setLang} user={user} recipe={selRecipe} versions={versions} loading={versionsLoading} onBack={()=>setView("detail")} onRestore={restoreVersion}/>;
-    if(view==="add")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={null} onSave={handleSave} onCancel={()=>setView("list")}/>;
-    if(view==="admin")return <AdminPanel t={t} lang={lang} setLang={setLang} user={user} allStubs={stubs} onBack={()=>setView("list")} onBulkSave={handleBulkSave} onBulkImport={handleBulkImport} auditTick={auditTick} users={users} onAddUser={addUser} onDeleteUser={deleteUser} onChangePassword={changePassword}/>;
-    return <ListScreen t={t} lang={lang} setLang={setLang} user={user} onLogout={doLogout} recipes={filtered} search={search} setSearch={setSearch} activeCat={activeCat} setActiveCat={setActiveCat} onSelect={r=>openDetail(r.id)} onAdd={()=>setView("add")} canEdit={canEdit} isAdmin={user.role==="admin"} onAdmin={()=>setView("admin")} faves={faves} toggleFave={toggleFave} favesOnly={favesOnly} setFavesOnly={setFavesOnly} totalCount={stubs.length}/>;
+    if(view==="add")return <AddEditScreen t={t} lang={lang} setLang={setLang} user={user} existing={dupSource} onSave={handleSave} onCancel={()=>setView("list")}/>;
+    if(view==="prep")return <PrepListScreen t={t} lang={lang} setLang={setLang} user={user} prepList={prepList} setPrepList={setPrepList} allStubs={stubs} onBack={()=>setView("list")} onSelect={r=>openDetail(r.id)}/>;
+    if(view==="admin")return <AdminPanel t={t} lang={lang} setLang={setLang} user={user} allStubs={stubs} onBack={()=>setView("list")} onBulkSave={handleBulkSave} onBulkImport={handleBulkImport} auditTick={auditTick} users={users} onAddUser={addUser} onDeleteUser={deleteUser} onChangePassword={changePassword} cats={cats} onSaveCats={saveCats}/>;
+    return <ListScreen t={t} lang={lang} setLang={setLang} user={user} onLogout={doLogout} recipes={filtered} allStubs={stubs} search={search} setSearch={setSearch} activeCat={activeCat} setActiveCat={setActiveCat} onSelect={r=>openDetail(r.id)} onAdd={()=>setView("add")} canEdit={canEdit} isAdmin={user.role==="admin"} onAdmin={()=>setView("admin")} faves={faves} toggleFave={toggleFave} favesOnly={favesOnly} setFavesOnly={setFavesOnly} totalCount={stubs.length} sortBy={sortBy} setSortBy={setSortBy} recentIds={recentIds} prepList={prepList} setPrepList={setPrepList} onOpenPrep={()=>setView("prep")}/>;
   };
 
-  return <>
+  return <CatCtx.Provider value={cats}>
     {renderScreen()}
     {toast && <Toast msg={toast.msg} kind={toast.kind}/>}
-  </>;
+    {zoomImg && <div onClick={()=>setZoomImg(null)} style={{position:"fixed",inset:0,
+      background:"rgba(0,0,0,.88)",zIndex:10000,display:"flex",alignItems:"center",
+      justifyContent:"center",padding:20,cursor:"zoom-out"}}>
+      <img src={zoomImg} alt="" style={{maxWidth:"100%",maxHeight:"100%",
+        borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.5)"}}/>
+      <button onClick={()=>setZoomImg(null)} style={{position:"absolute",top:16,right:16,
+        width:40,height:40,borderRadius:"50%",border:"none",background:"rgba(255,255,255,.2)",
+        color:"#fff",fontSize:20,cursor:"pointer"}}>✕</button>
+    </div>}
+  </CatCtx.Provider>;
 }
 
 // ── Toast component ───────────────────────────────────────────────────────────
@@ -1098,10 +1390,49 @@ function Toast({msg,kind}){
   </div>;
 }
 
+// ── QR code modal (#3) ────────────────────────────────────────────────────────
+function QRModal({recipe,name,t,onClose}){
+  const [dataUrl,setDataUrl]=useState("");
+  const url=`${window.location.origin}${window.location.pathname}#recipe/${recipe.id}`;
+  useEffect(()=>{
+    QRCode.toDataURL(url,{width:320,margin:2,color:{dark:"#1a1208",light:"#ffffff"}})
+      .then(setDataUrl).catch(e=>console.error("QR error",e));
+  },[recipe.id]);
+  const printQR=()=>{
+    const w=window.open("","_blank");
+    if(!w)return;
+    w.document.write(`<html><head><title>${name}</title></head>
+      <body style="text-align:center;font-family:Georgia,serif;padding:40px">
+      <h2 style="color:#1a1208">${name}</h2>
+      <img src="${dataUrl}" style="width:300px;height:300px"/>
+      <p style="color:#888;font-size:13px">${t.qrHint}</p>
+      </body></html>`);
+    w.document.close();
+    setTimeout(()=>w.print(),300);
+  };
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",
+    zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"28px",
+      textAlign:"center",maxWidth:360,boxShadow:"0 12px 50px rgba(0,0,0,.4)"}}>
+      <h3 style={{margin:"0 0 6px",fontSize:17,color:C.text}}>{name}</h3>
+      <p style={{fontSize:12,color:C.muted,margin:"0 0 18px"}}>{t.qrHint}</p>
+      {dataUrl
+        ?<img src={dataUrl} alt="QR" style={{width:260,height:260}}/>
+        :<div style={{height:260,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted}}>⏳</div>}
+      <div style={{display:"flex",gap:10,marginTop:20,justifyContent:"center"}}>
+        <button onClick={printQR} style={{padding:"9px 20px",background:C.gold,border:"none",
+          borderRadius:9,color:C.dark,fontWeight:"bold",fontSize:13,cursor:"pointer",fontFamily:FONT}}>🖨 {t.print}</button>
+        <button onClick={onClose} style={{padding:"9px 18px",background:"transparent",border:"1px solid #ccc",
+          borderRadius:9,color:"#888",fontSize:13,cursor:"pointer",fontFamily:FONT}}>{t.cancel}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
-function AdminPanel({t,lang,setLang,user,allStubs,onBack,onBulkSave,onBulkImport,auditTick,users,onAddUser,onDeleteUser,onChangePassword}){
+function AdminPanel({t,lang,setLang,user,allStubs,onBack,onBulkSave,onBulkImport,auditTick,users,onAddUser,onDeleteUser,onChangePassword,cats,onSaveCats}){
   const [tab,setTab]=useState("log");
   return <div style={{minHeight:"100vh",background:"#f5f0e8",fontFamily:FONT,display:"flex",flexDirection:"column"}}>
     <div style={{background:C.dark,height:54,padding:"0 16px",display:"flex",
@@ -1113,7 +1444,7 @@ function AdminPanel({t,lang,setLang,user,allStubs,onBack,onBulkSave,onBulkImport
     </div>
     {/* Tab bar */}
     <div style={{background:C.dark,borderBottom:`1px solid rgba(200,146,42,.25)`,display:"flex",padding:"0 16px",gap:4,overflowX:"auto"}}>
-      {[["log","📋 Change Log"],["users","👥 Users"],["bulk-edit","✏️ Bulk Edit"],["import","📥 Bulk Import"]].map(([k,label])=>(
+      {[["log","📋 Change Log"],["users","👥 Users"],["cats","🏷 "+t.manageCats],["bulk-edit","✏️ Bulk Edit"],["import","📥 Bulk Import"],["stats","📊 "+t.stats],["export","💾 "+t.exportData]].map(([k,label])=>(
         <button key={k} onClick={()=>setTab(k)} style={{padding:"10px 18px",background:"transparent",
           border:"none",borderBottom:`2px solid ${tab===k?C.gold:"transparent"}`,
           color:tab===k?C.goldL:"rgba(200,160,80,.6)",fontSize:13,cursor:"pointer",
@@ -1123,10 +1454,217 @@ function AdminPanel({t,lang,setLang,user,allStubs,onBack,onBulkSave,onBulkImport
     <div style={{flex:1,overflow:"auto"}}>
       {tab==="log"    && <ChangeLog   t={t} user={user} auditTick={auditTick}/>}
       {tab==="users"  && <UserMgmt    t={t} currentUser={user} users={users} onAdd={onAddUser} onDelete={onDeleteUser} onChangePassword={onChangePassword}/>}
+      {tab==="cats"   && <CategoryManager t={t} lang={lang} cats={cats} onSave={onSaveCats}/>}
       {tab==="bulk-edit" && <BulkEdit t={t} lang={lang} allStubs={allStubs} onBulkSave={onBulkSave}/>}
       {tab==="import" && <BulkImport  t={t} lang={lang} onBulkImport={onBulkImport}/>}
+      {tab==="stats"  && <StatsPanel  t={t} lang={lang} allStubs={allStubs} users={users}/>}
+      {tab==="export" && <ExportPanel t={t} lang={lang} allStubs={allStubs}/>}
     </div>
   </div>;
+}
+
+// ── STATS PANEL (#10) ─────────────────────────────────────────────────────────
+function StatsPanel({t,lang,allStubs,users}){
+  const cats=useContext(CatCtx);
+  const total=allStubs.length;
+  const drafts=allStubs.filter(r=>r.status==="draft").length;
+  const byCat=cats.map(c=>({label:lang==="en"?c.nameEn:c.nameHu,count:allStubs.filter(r=>r.category===c.id).length})).filter(c=>c.count>0).sort((a,b)=>b.count-a.count);
+  const byAuthor={};
+  allStubs.forEach(r=>{const a=r.author||"—";byAuthor[a]=(byAuthor[a]||0)+1;});
+  const authorList=Object.entries(byAuthor).sort((a,b)=>b[1]-a[1]);
+  const withImg=allStubs.filter(r=>r.coverImage).length;
+  const maxCat=Math.max(1,...byCat.map(c=>c.count));
+
+  const card={background:"#fff",borderRadius:12,padding:"16px 18px",border:`1px solid ${C.border}`};
+  return <div style={{maxWidth:760,margin:"0 auto",padding:"24px 16px"}}>
+    {/* Big numbers */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:20}}>
+      {[["📒",total,t.stats==="Statistics"?"Total recipes":"Összes recept"],
+        ["📝",drafts,t.draftBadge],
+        ["🖼",withImg,"With photo"],
+        ["👥",users.length,"Users"]].map(([emo,n,l])=>(
+        <div key={l} style={{...card,textAlign:"center"}}>
+          <div style={{fontSize:24}}>{emo}</div>
+          <div style={{fontSize:26,fontWeight:"bold",color:C.gold}}>{n}</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2}}>{l}</div>
+        </div>
+      ))}
+    </div>
+    {/* By category bar chart */}
+    <div style={{...card,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:"bold",color:C.text,marginBottom:14}}>By category</div>
+      {byCat.map(c=>(
+        <div key={c.label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+          <span style={{fontSize:12,color:C.muted,width:130,flexShrink:0,textAlign:"right"}}>{c.label}</span>
+          <div style={{flex:1,background:`${C.gold}18`,borderRadius:6,height:20,position:"relative"}}>
+            <div style={{width:`${c.count/maxCat*100}%`,background:`linear-gradient(90deg,${C.gold},${C.goldL})`,
+              height:"100%",borderRadius:6,minWidth:24}}/>
+          </div>
+          <span style={{fontSize:12,fontWeight:"bold",color:C.text,width:28}}>{c.count}</span>
+        </div>
+      ))}
+    </div>
+    {/* By author */}
+    <div style={card}>
+      <div style={{fontSize:13,fontWeight:"bold",color:C.text,marginBottom:12}}>By author</div>
+      {authorList.map(([a,n])=>(
+        <div key={a} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",
+          borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+          <span style={{color:C.text}}>{a}</span>
+          <span style={{color:C.gold,fontWeight:"bold"}}>{n}</span>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+// ── CATEGORY MANAGER (#8) ─────────────────────────────────────────────────────
+function CategoryManager({t,lang,cats,onSave}){
+  const [rows,setRows]=useState(()=>cats.map(c=>({...c})));
+  const [removed,setRemoved]=useState([]);
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{ setRows(cats.map(c=>({...c}))); setRemoved([]); },[cats]);
+
+  const PALETTE=["#c8922a","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4","#8b5e9e","#3d9b9b","#c0813d","#7a9e3d"];
+  const upd=(i,k,v)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,[k]:v}:r));
+  const addRow=()=>{
+    const nextId=Math.max(-1,...rows.map(r=>r.id),...cats.map(c=>c.id))+1;
+    setRows(rs=>[...rs,{id:nextId,nameEn:"",nameHu:"",color:PALETTE[rs.length%PALETTE.length],sort:rs.length}]);
+  };
+  const removeRow=(i)=>{
+    const r=rows[i];
+    if(r.id!==undefined && cats.some(c=>c.id===r.id)) setRemoved(x=>[...x,r.id]);
+    setRows(rs=>rs.filter((_,j)=>j!==i));
+  };
+  const save=async()=>{
+    // Validate
+    for(const r of rows){
+      if(!r.nameEn.trim()||!r.nameHu.trim()){ alert("All categories need both EN and HU names"); return; }
+    }
+    setSaving(true);
+    const withSort=rows.map((r,i)=>({...r,nameEn:r.nameEn.trim(),nameHu:r.nameHu.trim(),sort:i}));
+    await onSave(withSort,removed);
+    setSaving(false);
+  };
+
+  const ipt={...inputSt,padding:"7px 10px",fontSize:13};
+  return <div style={{maxWidth:720,margin:"0 auto",padding:"24px 16px"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+      <h2 style={{margin:0,fontSize:18,color:C.text}}>🏷 {t.manageCats}</h2>
+      <button onClick={addRow} style={{padding:"7px 14px",background:"transparent",
+        border:`1px solid ${C.gold}`,borderRadius:8,color:C.gold,fontSize:13,
+        cursor:"pointer",fontFamily:FONT,fontWeight:"bold"}}>+ {t.addCategory}</button>
+    </div>
+    <p style={{fontSize:12,color:C.muted,marginBottom:18,lineHeight:1.6}}>
+      Rename, recolor, add or remove categories. Removing a category that recipes still use will leave those recipes showing "—" until you reassign them.
+    </p>
+
+    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+      {rows.map((r,i)=>(
+        <div key={i} style={{background:"#fff",borderRadius:11,padding:"12px 14px",
+          border:`1px solid ${C.border}`,display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 160px"}}>
+            <label style={{display:"block",fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN NAME</label>
+            <input value={r.nameEn} onChange={e=>upd(i,"nameEn",e.target.value)} placeholder="English" style={ipt}/>
+          </div>
+          <div style={{flex:"1 1 160px"}}>
+            <label style={{display:"block",fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU NAME</label>
+            <input value={r.nameHu} onChange={e=>upd(i,"nameHu",e.target.value)} placeholder="Magyar" style={ipt}/>
+          </div>
+          <div>
+            <label style={{display:"block",fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>COLOR</label>
+            <div style={{display:"flex",gap:4}}>
+              {PALETTE.slice(0,5).map(col=>(
+                <button key={col} onClick={()=>upd(i,"color",col)} style={{width:22,height:22,borderRadius:"50%",
+                  background:col,border:r.color===col?`2px solid ${C.text}`:"2px solid transparent",cursor:"pointer"}}/>
+              ))}
+            </div>
+          </div>
+          <button onClick={()=>removeRow(i)} style={{padding:"7px 11px",background:"#fff0f0",
+            border:"1px solid #fcc",borderRadius:7,color:"#c44",fontSize:13,cursor:"pointer",fontFamily:FONT}}>✕</button>
+        </div>
+      ))}
+    </div>
+
+    <button onClick={save} disabled={saving} style={{padding:"11px 24px",
+      background:saving?"#ddd":`linear-gradient(135deg,${C.gold},${C.goldL})`,
+      border:"none",borderRadius:10,color:saving?"#999":C.dark,fontWeight:"bold",fontSize:14,
+      cursor:saving?"not-allowed":"pointer",fontFamily:FONT}}>
+      {saving?"…":"💾 Save categories"}
+    </button>
+  </div>;
+}
+
+// ── EXPORT PANEL (#9) ─────────────────────────────────────────────────────────
+function ExportPanel({t,lang,allStubs}){
+  const cats=useContext(CatCtx);
+  const [busy,setBusy]=useState(false);
+  const [msg,setMsg]=useState("");
+
+  const exportJSON=async()=>{
+    setBusy(true);setMsg("");
+    try{
+      // Fetch full recipes (with ingredients/steps)
+      const full=[];
+      for(const s of allStubs){
+        const r=await fetchRecipeById(s.id);
+        if(r)full.push(r);
+      }
+      const blob=new Blob([JSON.stringify(full,null,2)],{type:"application/json"});
+      downloadBlob(blob,`recipes-backup-${new Date().toISOString().slice(0,10)}.json`);
+      setMsg(`✓ Exported ${full.length} recipes (JSON)`);
+    }catch(e){setMsg("Export failed: "+(e.message||e));}
+    setBusy(false);
+  };
+
+  const exportCSV=async()=>{
+    setBusy(true);setMsg("");
+    try{
+      const full=[];
+      for(const s of allStubs){
+        const r=await fetchRecipeById(s.id);
+        if(r)full.push(r);
+      }
+      const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+      const rows=[["ID","HU Name","EN Name","Category","Pack Spec","Shelf Life","Vacuum","Status","Allergens","Author","Ingredients","Steps"].join(",")];
+      full.forEach(r=>{
+        const ings=(r.ingredients||[]).map(i=>`${i.name}${i.qty?` (${i.qty})`:""}`).join("; ");
+        const steps=(r.steps||[]).map((s,i)=>`${i+1}. ${s.desc}`).join(" | ");
+        rows.push([r.id,r.huName,r.enName,catLabel(cats,r.category,lang),r.packSpec,r.shelfLife,r.vacuumLevel,r.status,(r.allergens||[]).join(";"),r.author,ings,steps].map(esc).join(","));
+      });
+      const blob=new Blob(["\ufeff"+rows.join("\n")],{type:"text/csv;charset=utf-8"});
+      downloadBlob(blob,`recipes-${new Date().toISOString().slice(0,10)}.csv`);
+      setMsg(`✓ Exported ${full.length} recipes (CSV)`);
+    }catch(e){setMsg("Export failed: "+(e.message||e));}
+    setBusy(false);
+  };
+
+  const btn={padding:"12px 22px",border:"none",borderRadius:10,fontWeight:"bold",
+    fontSize:14,cursor:busy?"not-allowed":"pointer",fontFamily:FONT,opacity:busy?0.5:1};
+  return <div style={{maxWidth:600,margin:"0 auto",padding:"30px 16px"}}>
+    <div style={{background:"#fff",borderRadius:14,padding:"24px",border:`1px solid ${C.border}`}}>
+      <h2 style={{margin:"0 0 8px",fontSize:18,color:C.text}}>💾 {t.exportData}</h2>
+      <p style={{fontSize:13,color:C.muted,lineHeight:1.6,marginBottom:20}}>
+        Download a full backup of all {allStubs.length} recipes. JSON keeps everything (re-importable);
+        CSV opens in Excel for reading.
+      </p>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+        <button onClick={exportJSON} disabled={busy} style={{...btn,background:`linear-gradient(135deg,${C.gold},${C.goldL})`,color:C.dark}}>
+          {busy?"…":"⬇ JSON (backup)"}
+        </button>
+        <button onClick={exportCSV} disabled={busy} style={{...btn,background:"transparent",border:`1.5px solid ${C.gold}`,color:C.gold}}>
+          {busy?"…":"⬇ CSV (Excel)"}
+        </button>
+      </div>
+      {msg&&<div style={{marginTop:16,fontSize:13,color:msg.startsWith("✓")?"#3d7a52":C.danger,fontWeight:"bold"}}>{msg}</div>}
+    </div>
+  </div>;
+}
+function downloadBlob(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 
 // ── User Management ──────────────────────────────────────────────────────────
@@ -1360,6 +1898,7 @@ function ChangeLog({t,user,auditTick}){
 
 // ── Bulk Edit ─────────────────────────────────────────────────────────────────
 function BulkEdit({t,lang,allStubs,onBulkSave}){
+  const cats=useContext(CatCtx);
   const [selected,setSelected]=useState(new Set());
   const [fields,setFields]=useState({category:"",packSpec:"",shelfLife:"",vacuumLevel:""});
   const [search,setSearch]=useState("");
@@ -1399,7 +1938,6 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
     setDone(0);
   };
 
-  const CAT_NAMES=t.categories;
   const inputSm={...inputSt,padding:"7px 10px",fontSize:12};
 
   return <div style={{maxWidth:940,margin:"0 auto",padding:"24px 16px"}}>
@@ -1414,7 +1952,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
           <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{t.category}</label>
           <select value={fields.category} onChange={e=>setFields(f=>({...f,category:e.target.value}))} style={inputSm}>
             <option value="">— no change —</option>
-            {CAT_NAMES.map((c,i)=><option key={i} value={i}>{c}</option>)}
+            {cats.map(c=><option key={c.id} value={c.id}>{lang==="en"?c.nameEn:c.nameHu}</option>)}
           </select>
         </div>
         {[[t.packSpec,"packSpec"],[t.shelfLife,"shelfLife"],[t.vacuumLevel,"vacuumLevel"]].map(([l,k])=>(
@@ -1458,7 +1996,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
     <div style={{display:"flex",flexDirection:"column",gap:6}}>
       {visible.map(r=>{
         const isSel=selected.has(r.id);
-        const col=t.catColors[r.category]||C.gold;
+        const col=catColor(cats,r.category);
         return <div key={r.id} onClick={()=>toggle(r.id)}
           style={{background:isSel?"rgba(200,146,42,.08)":"#fff",borderRadius:10,
             padding:"11px 14px",border:`1.5px solid ${isSel?C.gold:C.border}`,
@@ -1469,7 +2007,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
             {isSel&&<span style={{color:"#fff",fontSize:13,lineHeight:1}}>✓</span>}
           </div>
           <span style={{padding:"2px 8px",borderRadius:8,fontSize:10,background:`${col}22`,
-            color:col,fontWeight:"bold",flexShrink:0}}>{t.catLabels[r.category]}</span>
+            color:col,fontWeight:"bold",flexShrink:0}}>{catLabel(cats,r.category,lang)}</span>
           <span style={{fontWeight:"bold",color:C.text,fontSize:13,flex:1,
             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getName(r)}</span>
           {lang==="en"&&r.huName&&<span style={{fontSize:11,color:C.muted,
@@ -1485,6 +2023,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
 
 // ── Bulk Import ───────────────────────────────────────────────────────────────
 function BulkImport({t,lang,onBulkImport}){
+  const cats=useContext(CatCtx);
   const [text,setText]=useState("");
   const [preview,setPreview]=useState([]);
   const [importing,setSaving]=useState(false);
@@ -1532,8 +2071,6 @@ Spring Rolls\tTavasztekercs\t1\t6\t20\t10\tRice paper|12 sheets; Shrimp|200g\tSo
     setText("");setPreview([]);
     setMsg(`✓ Imported ${preview.length} recipe${preview.length!==1?"s":""} successfully`);
   };
-
-  const CAT_COL=t.catColors;
 
   return <div style={{maxWidth:900,margin:"0 auto",padding:"24px 16px"}}>
     {/* Format guide */}
@@ -1591,8 +2128,8 @@ Spring Rolls\tTavasztekercs\t1\t6\t20\t10\tRice paper|12 sheets; Shrimp|200g\tSo
             border:`1px solid ${C.border}`,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{color:C.muted,fontSize:12,width:24,textAlign:"center"}}>{i+1}</span>
             <span style={{padding:"2px 9px",borderRadius:8,fontSize:10,fontWeight:"bold",
-              background:`${CAT_COL[r.category]}22`,color:CAT_COL[r.category]}}>
-              {t.catLabels[r.category]}
+              background:`${catColor(cats,r.category)}22`,color:catColor(cats,r.category)}}>
+              {catLabel(cats,r.category,lang)}
             </span>
             <span style={{fontWeight:"bold",color:C.text,fontSize:13,flex:1}}>{r.enName||r.huName}</span>
             {r.huName&&r.enName&&<span style={{color:C.muted,fontSize:12}}>{r.huName}</span>}

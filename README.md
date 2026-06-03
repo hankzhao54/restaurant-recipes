@@ -206,3 +206,37 @@ restaurant-app-supabase/
 ---
 
 如有任何步骤卡住，把错误信息发给我，我会帮你诊断。
+
+---
+
+## 功能升级记录（批次）
+
+### 第三批新功能需要的步骤
+
+如果你是从旧版本升级，按顺序做：
+
+**1. 数据库迁移**（Supabase SQL Editor 依次运行）
+- `supabase-batch2.sql` — 草稿状态 + 版本历史
+- `supabase-batch3.sql` — 过敏原 + 自定义分类
+
+**2. 安装新依赖**（QR 码功能需要）
+```
+cd D:\restaurant-app-supabase
+npm install
+```
+（package.json 新增了 `qrcode` 包，必须重新 npm install 一次）
+
+**3. 替换源码**：覆盖 `src/App.jsx`、`src/supabase.js`、`package.json`、`vite.config.js`
+
+**4. 测试 + 部署**
+```
+npm run dev          # 本地测试
+git add . ; git commit -m "batch 3 features" ; git push   # 部署
+```
+
+### 第三批功能清单
+- 🏷 **自定义分类**：Admin → Categories 标签，可增删改分类名和颜色
+- ⚠ **过敏原标记**：编辑菜谱时勾选过敏原，详情页显示红色标签
+- ⊞ **二维码**：每个菜谱详情页有二维码按钮，可打印贴料盒，扫码登录后直达该菜谱
+- 🧾 **今日备料清单**：卡片上 🧾 加入清单，自动按倍数汇总所有食材
+- 🕘 **最近查看** / **排序** / **复制菜谱** / **图片放大** / **食材反查** / **统计面板** / **数据导出**

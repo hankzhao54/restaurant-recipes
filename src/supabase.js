@@ -57,7 +57,7 @@ export async function getCurrentProfile() {
 export async function fetchAllRecipes() {
   const { data, error } = await supabase
     .from('recipes')
-    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, status, author_id, author_name, cover_image, created_at, ingredients')
+    .select('id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, status, allergens, author_id, author_name, cover_image, created_at, ingredients')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(toClientRecipe);
@@ -138,6 +138,7 @@ function toClientRecipe(r) {
     shelfLife: r.shelf_life || '',
     vacuumLevel: r.vacuum_level || '',
     status: r.status || 'published',
+    allergens: r.allergens || [],
     author: r.author_name || '',
     authorId: r.author_id,
     coverImage: r.cover_image,
@@ -160,6 +161,7 @@ function toDbRecipe(r) {
     shelf_life: r.shelfLife || '',
     vacuum_level: r.vacuumLevel || '',
     status: r.status || 'published',
+    allergens: r.allergens || [],
     author_id: r.authorId || null,
     author_name: r.author || '',
     cover_image: r.coverImage || null,
@@ -239,4 +241,48 @@ export async function fetchAuditLog(limit = 200) {
     recipeName: e.recipe_name,
     diff: e.diff || {},
   }));
+}
+
+// ── Categories (#8) ───────────────────────────────────────────────────────────
+export async function fetchCategories() {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .order('sort_order', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(c => ({
+    id: c.id,
+    nameEn: c.name_en,
+    nameHu: c.name_hu,
+    color: c.color,
+    sort: c.sort_order,
+  }));
+}
+
+export async function upsertCategory(cat) {
+  const row = {
+    id: cat.id,
+    name_en: cat.nameEn,
+    name_hu: cat.nameHu,
+    color: cat.color,
+    sort_order: cat.sort,
+  };
+  const { error } = await supabase.from('categories').upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function deleteCategory(id) {
+  const { error } = await supabase.from('categories').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// Next available category id (max + 1)
+export async function nextCategoryId() {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id')
+    .order('id', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data && data.length ? data[0].id : -1) + 1;
 }
