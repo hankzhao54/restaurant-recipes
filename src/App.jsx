@@ -13,7 +13,7 @@ import { resolveImage } from "./utils/image.js";
 // ── Category context (DB-backed, editable) ────────────────────────────────────
 const CatCtx = createContext([]);
 function catLabel(cats, id, lang){ const c=(cats||[]).find(x=>x.id===id); return c?(lang==="en"?c.nameEn:c.nameHu):"—"; }
-function catColor(cats, id){ const c=(cats||[]).find(x=>x.id===id); return c?c.color:"#c8922a"; }
+function catColor(cats, id){ const c=(cats||[]).find(x=>x.id===id); return c?c.color:"#c75d3c"; }
 
 // ── i18n — EN (primary) + HU only ────────────────────────────────────────────
 const T = {
@@ -42,7 +42,7 @@ const T = {
     noVersions:"No previous versions", restoreVersion:"Restore this version", restored:"✓ Version restored", current:"Current", editedBy:"edited by",
     categories:["Sauce / Marinade","Cold Dish","Stock / Soup","Staple / Noodle","Dessert / Bread","Fermented / Spice"],
     catLabels:["Sauce","Cold","Soup","Staple","Dessert","Fermented"],
-    catColors:["#c8922a","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4"],
+    catColors:["#c75d3c","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4"],
     roles:{admin:"Admin",chef:"Chef",staff:"Staff"},
     noResults:"No recipes found", back:"← Back", saving:"Saving…",
     confirmDelete:"Delete this recipe? This cannot be undone.",
@@ -81,7 +81,7 @@ const T = {
     noVersions:"Nincs korábbi verzió", restoreVersion:"Verzió visszaállítása", restored:"✓ Verzió visszaállítva", current:"Jelenlegi", editedBy:"szerkesztette",
     categories:["Szósz / Marinád","Hideg étel","Alaplé / Leves","Tészta / Főétel","Desszert / Kenyér","Fermentált / Fűszer"],
     catLabels:["Szósz","Hideg","Leves","Tészta","Desszert","Fermentált"],
-    catColors:["#c8922a","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4"],
+    catColors:["#c75d3c","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4"],
     roles:{admin:"Admin",chef:"Szakács",staff:"Alkalmazott"},
     noResults:"Nem találhatók receptek", back:"← Vissza", saving:"Mentés…",
     confirmDelete:"Törli ezt a receptet? Ez nem vonható vissza.",
@@ -99,8 +99,9 @@ const T = {
 
 const EMOJIS=["🥘","🥗","🍜","🍚","🍮","🧆","🍗","🫕","🍱","🍲","🥩","🫙","🌶","🧄","🥟"];
 const ALLERGEN_KEYS=["gluten","crustacean","egg","fish","peanut","soy","milk","nut","celery","mustard","sesame","sulphite","lupin","mollusc"];
-const C={bg:"#fdf8f0",card:"#fff",dark:"#1a1208",gold:"#c8922a",goldL:"#e8b84b",goldD:"#8b5e1a",text:"#2a1a05",muted:"#a08060",border:"#e8dcc8",danger:"#c04040"};
-const FONT="'Georgia','Noto Serif SC',serif";
+const C={bg:"#f4f1ea",card:"#ffffff",dark:"#211f1c",gold:"#c75d3c",goldL:"#e07a54",goldD:"#a3492d",text:"#221f1c",muted:"#8a8276",border:"#e7e2d8",danger:"#c04040"};
+const FONT="'Hanken Grotesk','Noto Serif SC',sans-serif";
+const FONTH="'Cormorant Garamond','Noto Serif SC',serif";
 const uid=()=>Math.random().toString(36).slice(2,9);
 
 function LangSwitcher({lang,setLang}){
@@ -128,9 +129,9 @@ function TopBar({t,lang,setLang,user,onLogout,left}){
           display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:C.dark,fontWeight:"bold"}}>
           {user.name[0]}
         </div>
-        <span style={{color:"#d0b080",fontSize:11,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
-        <button onClick={onLogout} style={{background:"transparent",border:`1px solid rgba(200,146,42,.35)`,
-          color:"#a08040",fontSize:11,padding:"4px 10px",borderRadius:6,cursor:"pointer",fontFamily:FONT}}>
+        <span style={{color:"#e0b39a",fontSize:11,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.name}</span>
+        <button onClick={onLogout} style={{background:"transparent",border:`1px solid rgba(199,93,60,.35)`,
+          color:"#a8714e",fontSize:11,padding:"4px 10px",borderRadius:6,cursor:"pointer",fontFamily:FONT}}>
           {t.logout}
         </button>
       </>}
@@ -192,7 +193,7 @@ function ImageUpload({value,onChange,size="md",t}){
           onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)}
           onDrop={e=>{e.preventDefault();setDrag(false);handle(e.dataTransfer.files[0]);}}
           style={{width:w,height:h,borderRadius:10,boxSizing:"border-box",
-            border:`2px dashed ${drag?C.gold:"#ddd"}`,background:drag?"rgba(200,146,42,.07)":"rgba(0,0,0,.02)",
+            border:`2px dashed ${drag?C.gold:"#ddd"}`,background:drag?"rgba(199,93,60,.07)":"rgba(0,0,0,.02)",
             display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",gap:5}}>
           <span style={{fontSize:size==="sm"?20:26,opacity:.3}}>📷</span>
           {size!=="sm"&&<span style={{fontSize:10,color:C.muted}}>{t.uploadHint}</span>}
@@ -204,7 +205,7 @@ const inputSt={width:"100%",boxSizing:"border-box",padding:"9px 11px",border:`1p
 const backSt={background:"transparent",border:"none",color:C.gold,fontSize:14,cursor:"pointer",fontFamily:FONT};
 function Field({label,children}){
   return <div style={{marginBottom:16}}>
-    <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:6,textTransform:"uppercase"}}>{label}</label>
+    <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:2,marginBottom:6,textTransform:"uppercase"}}>{label}</label>
     {children}
   </div>;
 }
@@ -212,7 +213,7 @@ function SI(props){return <input {...props} style={{...inputSt,...(props.style||
 function SHead({title,color}){
   return <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:13}}>
     <div style={{width:4,height:20,background:color,borderRadius:2}}/>
-    <h2 style={{margin:0,fontSize:16,color:C.text,fontWeight:"bold"}}>{title}</h2>
+    <h2 style={{margin:0,fontSize:21,fontFamily:FONTH,color:C.text,fontWeight:"bold"}}>{title}</h2>
   </div>;
 }
 
@@ -227,18 +228,18 @@ function getAltName(recipe, lang){
 function LoginScreen({t,lang,setLang,form,setForm,doLogin,err,loading}){
   return <div style={{minHeight:"100vh",background:C.dark,display:"flex",flexDirection:"column",
     alignItems:"center",justifyContent:"center",fontFamily:FONT,
-    backgroundImage:`radial-gradient(ellipse at 55% 35%,#2e1f0a,${C.dark})`}}>
+    backgroundImage:`radial-gradient(ellipse at 55% 35%,#2b2825,${C.dark})`}}>
     <div style={{position:"absolute",top:0,left:0,right:0,height:3,
       background:`linear-gradient(90deg,${C.goldD},${C.gold},${C.goldL},${C.gold},${C.goldD})`}}/>
     <div style={{position:"absolute",top:14,right:18}}><LangSwitcher lang={lang} setLang={setLang}/></div>
     <div style={{textAlign:"center",marginBottom:36}}>
       <div style={{fontSize:50}}>🍽</div>
-      <div style={{fontSize:24,fontWeight:"bold",letterSpacing:3,color:C.goldL,
-        textShadow:`0 2px 16px rgba(200,146,42,.45)`,marginTop:8}}>{t.appName}</div>
+      <div style={{fontSize:36,fontFamily:FONTH,fontWeight:"bold",letterSpacing:1,color:C.goldL,
+        textShadow:`0 2px 16px rgba(199,93,60,.45)`,marginTop:8}}>{t.appName}</div>
       <div style={{fontSize:11,color:C.goldD,letterSpacing:3,marginTop:5,textTransform:"uppercase"}}>{t.tagline}</div>
       <div style={{width:100,height:1,background:`linear-gradient(90deg,transparent,${C.gold},transparent)`,margin:"14px auto 0"}}/>
     </div>
-    <div style={{background:"rgba(255,255,255,.04)",border:`1px solid rgba(200,146,42,.22)`,
+    <div style={{background:"rgba(255,255,255,.04)",border:`1px solid rgba(199,93,60,.22)`,
       borderRadius:18,padding:"32px 36px",width:300,boxSizing:"border-box",
       backdropFilter:"blur(12px)",boxShadow:"0 22px 60px rgba(0,0,0,.55)"}}>
       {["username","password"].map(f=><div key={f} style={{marginBottom:15}}>
@@ -246,15 +247,15 @@ function LoginScreen({t,lang,setLang,form,setForm,doLogin,err,loading}){
         <input type={f==="password"?"password":"text"} value={form[f]}
           onChange={e=>setForm(p=>({...p,[f]:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doLogin()}
           style={{width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,.07)",
-            border:`1px solid rgba(200,146,42,.3)`,borderRadius:8,padding:"10px 13px",
-            color:"#f0e0b0",fontSize:14,fontFamily:FONT,outline:"none"}}/>
+            border:`1px solid rgba(199,93,60,.3)`,borderRadius:8,padding:"10px 13px",
+            color:"#f2e7df",fontSize:14,fontFamily:FONT,outline:"none"}}/>
       </div>)}
       {err&&<div style={{color:"#e06060",fontSize:12,marginBottom:11,textAlign:"center"}}>{err}</div>}
       <button onClick={doLogin} disabled={loading} style={{opacity:loading?0.5:1,width:"100%",padding:"12px 0",
         background:`linear-gradient(135deg,${C.gold},${C.goldL})`,
         border:"none",borderRadius:9,color:C.dark,fontWeight:"bold",fontSize:15,
         cursor:"pointer",letterSpacing:2,fontFamily:FONT,
-        boxShadow:`0 4px 20px rgba(200,146,42,.38)`}}>{loading?"…":t.loginBtn}</button>
+        boxShadow:`0 4px 20px rgba(199,93,60,.38)`}}>{loading?"…":t.loginBtn}</button>
       <div style={{marginTop:15,fontSize:10,color:"rgba(160,128,64,.5)",textAlign:"center",lineHeight:1.8}}>{t.hints}</div>
     </div>
   </div>;
@@ -290,7 +291,7 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,allStubs,search,setSea
           background:`linear-gradient(135deg,${C.gold},${C.goldL})`,
           border:"none",borderRadius:10,color:C.dark,fontWeight:"bold",
           fontSize:13,cursor:"pointer",fontFamily:FONT,whiteSpace:"nowrap",
-          boxShadow:`0 2px 10px rgba(200,146,42,.32)`}}>+ {t.addRecipe}</button>}
+          boxShadow:`0 2px 10px rgba(199,93,60,.32)`}}>+ {t.addRecipe}</button>}
       </div>
       {/* Recently viewed */}
       {recentRecipes.length>0&&!search&&!favesOnly&&activeCat===-1&&<div style={{marginBottom:18}}>
@@ -319,8 +320,8 @@ function ListScreen({t,lang,setLang,user,onLogout,recipes,allStubs,search,setSea
       {/* Category chips + favorites toggle */}
       <div style={{display:"flex",gap:7,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
         <button onClick={()=>setFavesOnly(f=>!f)} style={{padding:"5px 14px",borderRadius:20,cursor:"pointer",
-          fontFamily:FONT,fontSize:12,border:`1px solid ${favesOnly?"#e8b84b":"#d8a838"}`,
-          background:favesOnly?"#e8b84b":"transparent",color:favesOnly?C.dark:"#c8922a",
+          fontFamily:FONT,fontSize:12,border:`1px solid ${favesOnly?"#e07a54":"#cf6a45"}`,
+          background:favesOnly?"#e07a54":"transparent",color:favesOnly?C.dark:"#c75d3c",
           fontWeight:"bold",transition:"all .15s"}}>
           ★ {t.favorites} ({faveCount})
         </button>
@@ -361,12 +362,12 @@ function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave,inPrep,onTogglePr
   return <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
     style={{background:C.card,borderRadius:14,overflow:"hidden",cursor:"pointer",
       border:`1px solid ${C.border}`,transition:"all .2s",
-      boxShadow:hov?`0 8px 26px rgba(200,146,42,.18)`:"0 2px 8px rgba(0,0,0,.06)",
+      boxShadow:hov?`0 8px 26px rgba(199,93,60,.18)`:"0 2px 8px rgba(0,0,0,.06)",
       transform:hov?"translateY(-3px)":"none"}}>
     <div style={{height:115,overflow:"hidden",position:"relative",background:`linear-gradient(135deg,${col}18,${col}38)`}}>
       {recipe.coverImage
         ?<img src={recipe.coverImage} alt={name} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
-        :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:46}}>{emo}</div>}
+        :<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}><span style={{fontFamily:FONTH,fontSize:42,fontWeight:"bold",color:col,opacity:.42,lineHeight:1}}>{(name||"·")[0]}</span><span style={{fontSize:8,letterSpacing:2,textTransform:"uppercase",color:col,opacity:.42,fontWeight:"bold"}}>Photo</span></div>}
       <span style={{position:"absolute",top:7,left:7,padding:"2px 9px",borderRadius:10,
         fontSize:10,background:`${col}dd`,color:"#fff",fontWeight:"bold"}}>
         {catLabel(cats,recipe.category,lang)}
@@ -378,7 +379,7 @@ function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave,inPrep,onTogglePr
           border:"none",cursor:"pointer",fontSize:16,lineHeight:1,
           display:"flex",alignItems:"center",justifyContent:"center",
           background:isFave?"rgba(232,184,75,.95)":"rgba(0,0,0,.35)",
-          color:isFave?"#1a1208":"#fff",transition:"all .15s",padding:0}}>
+          color:isFave?"#211f1c":"#fff",transition:"all .15s",padding:0}}>
         {isFave?"★":"☆"}
       </button>
       {/* Add to prep list */}
@@ -396,7 +397,7 @@ function RecipeCard({recipe,t,lang,onClick,isFave,onToggleFave,inPrep,onTogglePr
         background:"rgba(192,129,61,.95)",color:"#fff"}}>{t.draftBadge}</span>}
     </div>
     <div style={{padding:"11px 13px"}}>
-      <div style={{fontSize:14,fontWeight:"bold",color:C.text,lineHeight:1.3,
+      <div style={{fontSize:19,fontFamily:FONTH,fontWeight:"bold",color:C.text,lineHeight:1.2,
         overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{name}</div>
       {alt&&<div style={{fontSize:10,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",
         whiteSpace:"nowrap",marginBottom:4}}>{alt}</div>}
@@ -470,7 +471,7 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
             boxShadow:`0 8px 30px ${col}28`}}>
             {recipe.coverImage
               ?<img src={recipe.coverImage} alt={name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              :<span>{emo}</span>}
+              :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}><span style={{fontFamily:FONTH,fontSize:74,fontWeight:"bold",color:col,opacity:.38,lineHeight:1}}>{(name||"·")[0]}</span><span style={{fontSize:10,letterSpacing:3,textTransform:"uppercase",color:col,opacity:.42,fontWeight:"bold"}}>Dish photo</span></div>}
           </div>
           {/* Title */}
           <div style={{marginBottom:18}}>
@@ -481,10 +482,10 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
             </span>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
               <div>
-                <h1 style={{margin:"0 0 3px",fontSize:26,color:C.text,lineHeight:1.2}}>
+                <h1 style={{margin:"0 0 3px",fontSize:36,fontFamily:FONTH,color:C.text,lineHeight:1.08}}>
                   {name}
                   {recipe.status==="draft"&&<span style={{fontSize:12,fontWeight:"bold",color:"#fff",
-                    background:"#c0813d",padding:"3px 9px",borderRadius:8,marginLeft:10,verticalAlign:"middle",
+                    background:"#c75d3c",padding:"3px 9px",borderRadius:8,marginLeft:10,verticalAlign:"middle",
                     letterSpacing:1}}>{t.draftBadge}</span>}
                 </h1>
                 {alt&&<div style={{fontSize:13,color:C.muted}}>{t.originalName} {alt}</div>}
@@ -529,8 +530,8 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
               <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.l}</div>
             </div>)}
           </div>
-          <div style={{background:"rgba(200,146,42,.06)",border:"1px dashed rgba(200,146,42,.3)",
-            borderRadius:9,padding:"9px 14px",marginBottom:24,color:"#a07030",fontSize:11}}>💰 {t.cost}</div>
+          <div style={{background:"rgba(199,93,60,.06)",border:"1px dashed rgba(199,93,60,.3)",
+            borderRadius:9,padding:"9px 14px",marginBottom:24,color:"#a8714e",fontSize:11}}>💰 {t.cost}</div>
           {/* Ingredients */}
           {displayIngs.length>0&&<>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13,flexWrap:"wrap",gap:8}}>
@@ -565,7 +566,7 @@ function DetailScreen({t,lang,setLang,recipe,loading,user,canEdit,onBack,onEdit,
                 <div key={ing.id||i} style={{background:C.card,borderRadius:11,overflow:"hidden",border:`1px solid ${C.border}`,textAlign:"center"}}>
                   {ing.image
                     ?<img src={ing.image} alt={ing.name} onClick={()=>onZoom&&onZoom(ing.image)} style={{width:"100%",height:85,objectFit:"cover",display:"block",cursor:"zoom-in"}}/>
-                    :<div style={{height:62,background:`${col}10`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🥄</div>}
+                    :<div style={{height:62,background:`${col}10`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:FONTH,fontSize:26,fontWeight:"bold",color:col,opacity:.4}}>{(ing.name||"·")[0]}</span></div>}
                   <div style={{padding:"7px 8px"}}>
                     <div onClick={()=>onSearchIngredient&&onSearchIngredient(ing.name)}
                       title={t.usedIn}
@@ -899,17 +900,17 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
               {/* HU + EN name side by side */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
                 <div>
-                  <div style={{fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU NAME</div>
+                  <div style={{fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU NAME</div>
                   <SI value={ing.name||""} onChange={e=>updI(i,"name",e.target.value)} placeholder="Magyar név"/>
                 </div>
                 <div>
-                  <div style={{fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN NAME</div>
+                  <div style={{fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN NAME</div>
                   <SI value={ing.enName||""} onChange={e=>updI(i,"enName",e.target.value)} placeholder="English name"/>
                 </div>
               </div>
               {/* Qty (shared) */}
               <div>
-                <div style={{fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>QTY</div>
+                <div style={{fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>QTY</div>
                 <SI value={ing.qty||""} onChange={e=>updI(i,"qty",e.target.value)} placeholder={t.ingredientQty}/>
               </div>
             </div>
@@ -930,13 +931,13 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
             <div style={{flex:1,background:C.card,borderRadius:12,padding:"11px 13px",border:`1px solid ${C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
                 <div>
-                  <div style={{fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU STEP</div>
+                  <div style={{fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU STEP</div>
                   <textarea value={step.desc||""} onChange={e=>updS(i,"desc",e.target.value)}
                     placeholder="Magyar lépés…" rows={3}
                     style={{...inputSt,resize:"vertical",minHeight:70}}/>
                 </div>
                 <div>
-                  <div style={{fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN STEP</div>
+                  <div style={{fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN STEP</div>
                   <textarea value={step.enDesc||""} onChange={e=>updS(i,"enDesc",e.target.value)}
                     placeholder="English step…" rows={3}
                     style={{...inputSt,resize:"vertical",minHeight:70}}/>
@@ -960,7 +961,7 @@ function AddEditScreen({t,lang,setLang,user,existing,onSave,onCancel}){
           background:saving?"#ddd":`linear-gradient(135deg,${C.gold},${C.goldL})`,
           border:"none",borderRadius:12,color:saving?"#999":C.dark,fontWeight:"bold",
           fontSize:15,cursor:saving?"not-allowed":"pointer",letterSpacing:2,fontFamily:FONT,
-          boxShadow:saving?"none":`0 4px 20px rgba(200,146,42,.35)`}}>{saving?t.saving:t.publish}</button>
+          boxShadow:saving?"none":`0 4px 20px rgba(199,93,60,.35)`}}>{saving?t.saving:t.publish}</button>
       </div>
     </div>
   </div>;
@@ -1395,7 +1396,7 @@ function QRModal({recipe,name,t,onClose}){
   const [dataUrl,setDataUrl]=useState("");
   const url=`${window.location.origin}${window.location.pathname}#recipe/${recipe.id}`;
   useEffect(()=>{
-    QRCode.toDataURL(url,{width:320,margin:2,color:{dark:"#1a1208",light:"#ffffff"}})
+    QRCode.toDataURL(url,{width:320,margin:2,color:{dark:"#211f1c",light:"#ffffff"}})
       .then(setDataUrl).catch(e=>console.error("QR error",e));
   },[recipe.id]);
   const printQR=()=>{
@@ -1403,7 +1404,7 @@ function QRModal({recipe,name,t,onClose}){
     if(!w)return;
     w.document.write(`<html><head><title>${name}</title></head>
       <body style="text-align:center;font-family:Georgia,serif;padding:40px">
-      <h2 style="color:#1a1208">${name}</h2>
+      <h2 style="color:#211f1c">${name}</h2>
       <img src="${dataUrl}" style="width:300px;height:300px"/>
       <p style="color:#888;font-size:13px">${t.qrHint}</p>
       </body></html>`);
@@ -1443,7 +1444,7 @@ function AdminPanel({t,lang,setLang,user,allStubs,onBack,onBulkSave,onBulkImport
       <LangSwitcher lang={lang} setLang={setLang}/>
     </div>
     {/* Tab bar */}
-    <div style={{background:C.dark,borderBottom:`1px solid rgba(200,146,42,.25)`,display:"flex",padding:"0 16px",gap:4,overflowX:"auto"}}>
+    <div style={{background:C.dark,borderBottom:`1px solid rgba(199,93,60,.25)`,display:"flex",padding:"0 16px",gap:4,overflowX:"auto"}}>
       {[["log","📋 Change Log"],["users","👥 Users"],["cats","🏷 "+t.manageCats],["bulk-edit","✏️ Bulk Edit"],["import","📥 Bulk Import"],["stats","📊 "+t.stats],["export","💾 "+t.exportData]].map(([k,label])=>(
         <button key={k} onClick={()=>setTab(k)} style={{padding:"10px 18px",background:"transparent",
           border:"none",borderBottom:`2px solid ${tab===k?C.gold:"transparent"}`,
@@ -1525,7 +1526,7 @@ function CategoryManager({t,lang,cats,onSave}){
   const [saving,setSaving]=useState(false);
   useEffect(()=>{ setRows(cats.map(c=>({...c}))); setRemoved([]); },[cats]);
 
-  const PALETTE=["#c8922a","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4","#8b5e9e","#3d9b9b","#c0813d","#7a9e3d"];
+  const PALETTE=["#c75d3c","#5a9e6f","#4a90c4","#c4774a","#c06090","#4ab0c4","#8b5e9e","#3d9b9b","#c75d3c","#7a9e3d"];
   const upd=(i,k,v)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,[k]:v}:r));
   const addRow=()=>{
     const nextId=Math.max(-1,...rows.map(r=>r.id),...cats.map(c=>c.id))+1;
@@ -1564,15 +1565,15 @@ function CategoryManager({t,lang,cats,onSave}){
         <div key={i} style={{background:"#fff",borderRadius:11,padding:"12px 14px",
           border:`1px solid ${C.border}`,display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
           <div style={{flex:"1 1 160px"}}>
-            <label style={{display:"block",fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN NAME</label>
+            <label style={{display:"block",fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>EN NAME</label>
             <input value={r.nameEn} onChange={e=>upd(i,"nameEn",e.target.value)} placeholder="English" style={ipt}/>
           </div>
           <div style={{flex:"1 1 160px"}}>
-            <label style={{display:"block",fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU NAME</label>
+            <label style={{display:"block",fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>HU NAME</label>
             <input value={r.nameHu} onChange={e=>upd(i,"nameHu",e.target.value)} placeholder="Magyar" style={ipt}/>
           </div>
           <div>
-            <label style={{display:"block",fontSize:9,color:"#a07030",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>COLOR</label>
+            <label style={{display:"block",fontSize:9,color:"#a8714e",letterSpacing:1.5,marginBottom:3,fontWeight:"bold"}}>COLOR</label>
             <div style={{display:"flex",gap:4}}>
               {PALETTE.slice(0,5).map(col=>(
                 <button key={col} onClick={()=>upd(i,"color",col)} style={{width:22,height:22,borderRadius:"50%",
@@ -1676,7 +1677,7 @@ function UserMgmt({t,currentUser,users,onAdd,onDelete,onChangePassword}){
   const [confirmDelId,setConfirmDelId]=useState(null);
   const [err,setErr]=useState("");
 
-  const ROLE_COLOR={admin:"#c04040",chef:"#c8922a",staff:"#5a9e6f"};
+  const ROLE_COLOR={admin:"#c04040",chef:"#c75d3c",staff:"#5a9e6f"};
 
   const handleAdd=async()=>{
     const u=newUser.username.trim(), n=newUser.name.trim(), p=newUser.password.trim();
@@ -1708,23 +1709,23 @@ function UserMgmt({t,currentUser,users,onAdd,onDelete,onChangePassword}){
 
     {/* Add form */}
     {adding&&<div style={{background:"#fff",borderRadius:12,padding:"16px 18px",marginBottom:18,
-      border:`1.5px solid ${C.gold}`,boxShadow:"0 2px 10px rgba(200,146,42,.12)"}}>
+      border:`1.5px solid ${C.gold}`,boxShadow:"0 2px 10px rgba(199,93,60,.12)"}}>
       <div style={{fontSize:13,fontWeight:"bold",color:C.text,marginBottom:13}}>New user account</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
         <div>
-          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>USERNAME</label>
+          <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>USERNAME</label>
           <input value={newUser.username} onChange={e=>setNewUser(p=>({...p,username:e.target.value.toLowerCase().replace(/\s/g,"")}))} placeholder="e.g. jane" style={ipt}/>
         </div>
         <div>
-          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>DISPLAY NAME</label>
+          <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>DISPLAY NAME</label>
           <input value={newUser.name} onChange={e=>setNewUser(p=>({...p,name:e.target.value}))} placeholder="e.g. Jane Doe" style={ipt}/>
         </div>
         <div>
-          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>PASSWORD (≥6 chars)</label>
+          <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>PASSWORD (≥6 chars)</label>
           <input type="text" value={newUser.password} onChange={e=>setNewUser(p=>({...p,password:e.target.value}))} placeholder="At least 6 characters" style={ipt}/>
         </div>
         <div>
-          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>ROLE</label>
+          <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:1.5,marginBottom:4,fontWeight:"bold"}}>ROLE</label>
           <select value={newUser.role} onChange={e=>setNewUser(p=>({...p,role:e.target.value}))} style={ipt}>
             <option value="staff">Staff (view only)</option>
             <option value="chef">Chef (can edit recipes)</option>
@@ -1781,8 +1782,8 @@ function UserMgmt({t,currentUser,users,onAdd,onDelete,onChangePassword}){
             </div>
           </div>
           {/* Password change inline */}
-          {pwdEditId===u.id&&<div style={{marginTop:11,padding:"11px 13px",background:"rgba(200,146,42,.07)",
-            borderRadius:8,border:`1px solid rgba(200,146,42,.25)`}}>
+          {pwdEditId===u.id&&<div style={{marginTop:11,padding:"11px 13px",background:"rgba(199,93,60,.07)",
+            borderRadius:8,border:`1px solid rgba(199,93,60,.25)`}}>
             <div style={{fontSize:11,color:"#8a7050",marginBottom:6}}>New password for <b>{u.name}</b>:</div>
             <div style={{display:"flex",gap:7}}>
               <input type="text" value={pwdValue} onChange={e=>setPwdValue(e.target.value)} placeholder="At least 6 characters" style={{...ipt,flex:1}} autoFocus/>
@@ -1831,7 +1832,7 @@ function ChangeLog({t,user,auditTick}){
     fetchAuditLog(300).then(setLog).catch(()=>{});
   },[auditTick]);
 
-  const ACTION_COLOR={create:"#5a9e6f",edit:"#4a90c4","bulk-edit":"#8b5e9e",import:"#c8922a",delete:"#c04040",restore:"#3d9b9b","user-add":"#5a9e6f","user-del":"#c04040","pwd-change":"#4a90c4"};
+  const ACTION_COLOR={create:"#5a9e6f",edit:"#4a90c4","bulk-edit":"#8b5e9e",import:"#c75d3c",delete:"#c04040",restore:"#3d9b9b","user-add":"#5a9e6f","user-del":"#c04040","pwd-change":"#4a90c4"};
   const filtered = filter==="all" ? log : log.filter(e=>e.action===filter);
 
   const fmt = ts => {
@@ -1949,7 +1950,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
         <div>
-          <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{t.category}</label>
+          <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{t.category}</label>
           <select value={fields.category} onChange={e=>setFields(f=>({...f,category:e.target.value}))} style={inputSm}>
             <option value="">— no change —</option>
             {cats.map(c=><option key={c.id} value={c.id}>{lang==="en"?c.nameEn:c.nameHu}</option>)}
@@ -1957,7 +1958,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
         </div>
         {[[t.packSpec,"packSpec"],[t.shelfLife,"shelfLife"],[t.vacuumLevel,"vacuumLevel"]].map(([l,k])=>(
           <div key={k}>
-            <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{l}</label>
+            <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:2,marginBottom:5,textTransform:"uppercase"}}>{l}</label>
             <input type="text" placeholder="no change" value={fields[k]}
               onChange={e=>setFields(f=>({...f,[k]:e.target.value}))} style={inputSm}/>
           </div>
@@ -1998,7 +1999,7 @@ function BulkEdit({t,lang,allStubs,onBulkSave}){
         const isSel=selected.has(r.id);
         const col=catColor(cats,r.category);
         return <div key={r.id} onClick={()=>toggle(r.id)}
-          style={{background:isSel?"rgba(200,146,42,.08)":"#fff",borderRadius:10,
+          style={{background:isSel?"rgba(199,93,60,.08)":"#fff",borderRadius:10,
             padding:"11px 14px",border:`1.5px solid ${isSel?C.gold:C.border}`,
             cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .15s"}}>
           <div style={{width:20,height:20,borderRadius:4,border:`2px solid ${isSel?C.gold:"#ccc"}`,
@@ -2074,7 +2075,7 @@ Spring Rolls\tTavasztekercs\t1\t6\t20\t10\tRice paper|12 sheets; Shrimp|200g\tSo
 
   return <div style={{maxWidth:900,margin:"0 auto",padding:"24px 16px"}}>
     {/* Format guide */}
-    <div style={{background:"rgba(200,146,42,.07)",border:`1px solid rgba(200,146,42,.25)`,
+    <div style={{background:"rgba(199,93,60,.07)",border:`1px solid rgba(199,93,60,.25)`,
       borderRadius:12,padding:"14px 18px",marginBottom:18}}>
       <div style={{fontSize:12,fontWeight:"bold",color:C.gold,marginBottom:8}}>📋 Format: Tab-separated columns</div>
       <div style={{fontSize:11,color:"#8a7050",lineHeight:1.7,fontFamily:"monospace"}}>
@@ -2090,7 +2091,7 @@ Spring Rolls\tTavasztekercs\t1\t6\t20\t10\tRice paper|12 sheets; Shrimp|200g\tSo
 
     {/* Paste area */}
     <div style={{marginBottom:14}}>
-      <label style={{display:"block",fontSize:10,color:"#a07030",letterSpacing:2,marginBottom:6,textTransform:"uppercase"}}>
+      <label style={{display:"block",fontSize:10,color:"#a8714e",letterSpacing:2,marginBottom:6,textTransform:"uppercase"}}>
         Paste tab-separated data here (copy from Excel / Google Sheets)
       </label>
       <textarea value={text} onChange={e=>setText(e.target.value)}
